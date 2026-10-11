@@ -8,6 +8,8 @@
 
 - qWDTT
 - CSQTT
+- olcRTC
+- OpenFlux
 - SOCKS
 - HTTP(S)
 - Shadowsocks
