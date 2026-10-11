@@ -2,7 +2,7 @@
 
 Кроссплатформенный клиент для управления прокси на Qt с ядрами [sing-box](https://github.com/SagerNet/sing-box) и [Xray](https://github.com/XTLS/Xray-core).
 
-Форк [Throne](https://github.com/throneproj/Throne) с поддержкой протоколов qWDTT,CSQTT, а также olcRTC,OpenFlux,DNSTT (в планах на ближайшее время).
+Форк [Throne](https://github.com/throneproj/Throne) с поддержкой протоколов qWDTT,CSQTT,olcRTC,OpenFlux, а также DNSTT (в планах на ближайшее время).
 
 ## Поддерживаемые протоколы
 
