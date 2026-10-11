@@ -31,6 +31,11 @@
 #include <QStandardPaths>
 #include <QUuid>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QTextEdit>
+#include <QPlainTextEdit>
+#include <QAbstractButton>
 #include <QScreen>
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
@@ -217,7 +222,6 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->seasonal_decoration->addItem(tr("Disabled"), "none");
     ui->seasonal_decoration->addItem(tr("Halloween"), "halloween");
     ui->seasonal_decoration->addItem(tr("New Year"), "newyear");
-    ui->seasonal_decoration->addItem(tr("New Year"), "newyear");
     const int decorationIndex = ui->seasonal_decoration->findData(Configs::dataManager->settingsRepo->seasonal_decoration);
     ui->seasonal_decoration->setCurrentIndex(qMax(0, decorationIndex));
     auto themeId = Configs::dataManager->settingsRepo->theme.toInt(&ok);
@@ -330,6 +334,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         want = want.boundedTo(QSize(avail.width() - 24, avail.height() - 72));
     }
     resize(want);
+    initialFormState = formStateWithoutDecoration();
+    initialCustomInbound = CACHE.custom_inbound;
 }
 
 DialogBasicSettings::~DialogBasicSettings() {
@@ -380,7 +386,32 @@ void DialogBasicSettings::applyRegexHighlighting() {
     highlightRegexLines(ui->log_exclude_regex);
 }
 
+QJsonObject DialogBasicSettings::formStateWithoutDecoration() const {
+    QJsonObject state;
+    for (auto *widget : findChildren<QWidget *>()) {
+        if (widget == ui->seasonal_decoration || ui->seasonal_decoration->isAncestorOf(widget)) continue;
+        const auto key = widget->objectName();
+        if (key.isEmpty()) continue;
+        if (auto *combo = qobject_cast<QComboBox *>(widget)) {
+            state[key] = QJsonObject{{"index", combo->currentIndex()}, {"text", combo->currentText()}};
+        } else if (auto *edit = qobject_cast<QLineEdit *>(widget)) state[key] = edit->text();
+        else if (auto *edit = qobject_cast<QTextEdit *>(widget)) state[key] = edit->toPlainText();
+        else if (auto *edit = qobject_cast<QPlainTextEdit *>(widget)) state[key] = edit->toPlainText();
+        else if (auto *button = qobject_cast<QAbstractButton *>(widget); button && button->isCheckable()) state[key] = button->isChecked();
+    }
+    return state;
+}
+
 void DialogBasicSettings::accept() {
+    // Decoration-only edits do not pass through the network settings save path.
+    if (initialFormState == formStateWithoutDecoration() && initialCustomInbound == CACHE.custom_inbound &&
+        !CACHE.needRestart && !CACHE.updateDisableTray && !CACHE.updateTrayIcon &&
+        !CACHE.updateMaxLogLines && !CACHE.updateDisableAdmin) {
+        Configs::dataManager->settingsRepo->seasonal_decoration = ui->seasonal_decoration->currentData().toString();
+        MW_dialog_message(MwMessage::UpdateSettings, {QStringLiteral("decorationOnly")});
+        QDialog::accept();
+        return;
+    }
     Configs::dataManager->settingsRepo->seasonal_decoration = ui->seasonal_decoration->currentData().toString();
     bool needChoosePort = false;
 

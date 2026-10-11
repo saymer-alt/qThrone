@@ -71,7 +71,7 @@ protected:
         if (!enabled || width() < 90 || height() < 24) return;
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, false);
-        const qreal scale = qMin(qreal(width()) / 136.0, qreal(height()) / 46.0);
+        const qreal scale = 64.0 / 46.0;
         p.translate(width() - 136 * scale, height() - 46 * scale);
         p.scale(scale, scale);
         p.setClipRect(0, 0, 136, 46);
@@ -234,15 +234,17 @@ private:
     void updateBounds() {
         if (!anchor || !bottom || !parentWidget()) return;
         // Give status text the available width before reserving room for artwork.
-        const int available = noticePriority ? 0 : qBound(0, parentWidget()->width() - 900, 230);
+        const int available = noticePriority || parentWidget()->width() < 1130 ? 0 : 230;
         if (anchor->maximumWidth() != available) anchor->setMaximumWidth(available);
         anchor->setVisible(enabled && !noticePriority);
         setVisible(enabled && !noticePriority);
 
         const QPoint top = anchor->mapTo(parentWidget(), QPoint(0, 0));
         const int baseline = bottom->mapTo(parentWidget(), QPoint(0, bottom->height())).y();
-        setGeometry(top.x(), top.y(), qMax(0, anchor->width() - rightInset), qMax(0, baseline - top.y()));
-        if (isVisible() && width() >= 90 && height() >= 24) timer.start(); else timer.stop();
+        const bool fits = enabled && !noticePriority && available > 0 && anchor->width() - rightInset >= 190 && baseline - top.y() >= 64;
+        setGeometry(top.x() + qMax(0, anchor->width() - rightInset - 190), baseline - 64, 190, 64);
+        setVisible(fits);
+        if (fits) timer.start(); else timer.stop();
         raise();
     }
     QPointer<QWidget> anchor, bottom;

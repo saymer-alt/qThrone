@@ -23,6 +23,9 @@ public slots:
 
 private:
     Ui::DialogBasicSettings *ui;
+    QJsonObject initialFormState;
+    QString initialCustomInbound;
+    QJsonObject formStateWithoutDecoration() const;
 
     void applyRegexHighlighting();
 

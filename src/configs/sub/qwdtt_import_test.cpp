@@ -28,6 +28,7 @@
 #include <QDir>
 #include "ui_mainwindow.h"
 #include "include/ui/widget/SeasonalDecoration.hpp"
+#include "include/ui/setting/dialog_basic_settings.h"
 
 int TestQwdttImport() {
     qInstallMessageHandler(nullptr);
@@ -48,6 +49,22 @@ int TestQwdttImport() {
     const auto check = [&failures](bool ok, const char *name) {
         if (!ok) { qCritical() << "qWDTT import test failed:" << name; ++failures; }
     };
+    {
+        const auto previousCallback = MW_dialog_message;
+        QStringList flags;
+        MW_dialog_message = [&flags](MwMessage, QStringList changes) { flags = changes; };
+        const auto restoreCallback = qScopeGuard([previousCallback] { MW_dialog_message = previousCallback; });
+        DialogBasicSettings dialog;
+        auto *selector = dialog.findChild<QComboBox *>("seasonal_decoration");
+        check(selector && selector->count() == 3, "exactly Disabled, Halloween and New Year options");
+        if (selector) {
+            selector->setCurrentIndex(selector->findData("newyear"));
+            const auto inboundBefore = Configs::dataManager->settingsRepo->inbound_socks_port;
+            dialog.accept();
+            check(flags == QStringList{QStringLiteral("decorationOnly")}, "decoration change uses live appearance update");
+            check(Configs::dataManager->settingsRepo->inbound_socks_port == inboundBefore, "decoration change preserves network settings");
+        }
+    }
     {
         // Exercise the real .ui hierarchy: a splitter silently adopts direct QWidget children.
         QMainWindow window;
@@ -73,11 +90,12 @@ int TestQwdttImport() {
                     window.show();
                     for (int i = 0; i < 4; ++i) QApplication::processEvents();
                     if (mode == "newyear") check(decoration->size() == previousGeometry, "both decorations share the same dimensions");
+                    if (mode != "none") check(decoration->size() == QSize(190, 64), "artwork keeps fixed size while resizing");
                     check(ui.splitter->count() == panes, "seasonal overlay never becomes a splitter pane");
                     check(ui.splitter->width() >= ui.centralwidget->width() - 24, "seasonal overlay preserves full-width panels");
                     check(ui.tabWidget->width() >= ui.splitter->width() - 24, "profile table preserves panel width");
                     check(decoration->parentWidget() == ui.centralwidget, "decoration belongs to central overlay container");
-                    check(decoration->isVisible() == (mode != "none"), "decoration toggle applies without restart");
+                    check(decoration->isVisible() == (mode != "none" && size.width() >= 1130), "decoration hides instead of shrinking when space is insufficient");
                 }
                 decoration->setDecoration("newyear");
                 for (int i = 0; i < 6; ++i) QApplication::processEvents();
