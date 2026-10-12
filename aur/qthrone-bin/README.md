@@ -3,6 +3,9 @@
 This binary package installs the existing qThrone 1.1.2 Linux release with
 its bundled Qt libraries. No separate application release is required.
 Supported release architectures: x86_64 and aarch64.
+The clean Arch installation and X11/Wayland launch checks run on x86_64.
+The aarch64 package uses the existing ARM64 release; native ARM execution
+has not been verified by this workflow.
 
 ## Install from this repository
 

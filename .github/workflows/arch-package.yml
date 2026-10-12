@@ -21,7 +21,10 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           cd aur/qthrone-bin
           su builder -c "cd '$PWD' && makepkg -s --noconfirm"
-          su builder -c "cd '$PWD' && makepkg --printsrcinfo" > .SRCINFO
+          su builder -c "cd '$PWD' && makepkg --printsrcinfo" > generated.SRCINFO
+          if test -f .SRCINFO; then diff -u .SRCINFO generated.SRCINFO; fi
+          cp generated.SRCINFO .SRCINFO
+          cat .SRCINFO
           pacman -U --noconfirm ./*.pkg.tar.zst
           namcap ./*.pkg.tar.zst | tee namcap.log
           desktop-file-validate /usr/share/applications/qThrone.desktop
@@ -45,6 +48,7 @@ jobs:
         if: always()
         with:
           name: qthrone-arch-x86_64
+          include-hidden-files: true
           path: |
             aur/qthrone-bin/*.pkg.tar.zst
             aur/qthrone-bin/.SRCINFO
