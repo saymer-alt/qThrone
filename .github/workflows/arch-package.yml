@@ -1,0 +1,55 @@
+name: Arch Linux package
+on:
+  push:
+    branches: [packaging/archlinux]
+    paths: ['aur/qthrone-bin/**', '.github/workflows/arch-package.yml', 'script/test_arch_package.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Prepare Arch environment
+        run: pacman -Syu --noconfirm git unzip sudo xorg-server-xvfb xorg-xauth xdotool weston desktop-file-utils namcap
+      - uses: actions/checkout@v7
+      - name: Build and install package
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: /usr/bin/pacman' > /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          cd aur/qthrone-bin
+          su builder -c "cd '$PWD' && makepkg -s --noconfirm"
+          su builder -c "cd '$PWD' && makepkg --printsrcinfo" > generated.SRCINFO
+          if test -f .SRCINFO; then diff -u .SRCINFO generated.SRCINFO; fi
+          cp generated.SRCINFO .SRCINFO
+          cat .SRCINFO
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          namcap ./*.pkg.tar.zst | tee namcap.log
+          desktop-file-validate /usr/share/applications/qThrone.desktop
+      - name: Check runtime and graphical launch
+        run: |
+          cd aur/qthrone-bin
+          for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
+            ldd "/usr/lib/qthrone/$binary" >> dependencies.log 2>&1 || true
+          done
+          find /usr/lib/qthrone/usr/plugins -name '*.so' -exec ldd '{}' \; >> dependencies.log 2>&1
+          if grep 'not found' dependencies.log; then exit 1; fi
+          su builder -c "bash '$GITHUB_WORKSPACE/script/test_arch_package.sh' '$PWD'"
+      - name: Verify package removal preserves settings
+        run: |
+          test -d /home/builder/.config/qThrone
+          pacman -R --noconfirm qthrone-bin
+          test ! -e /usr/bin/qthrone
+          test ! -e /usr/lib/qthrone
+          test -d /home/builder/.config/qThrone
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qthrone-arch-x86_64
+          include-hidden-files: true
+          path: |
+            aur/qthrone-bin/*.pkg.tar.zst
+            aur/qthrone-bin/.SRCINFO
+            aur/qthrone-bin/*.log
