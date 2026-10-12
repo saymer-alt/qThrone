@@ -1,4 +1,5 @@
 #include "include/database/GroupsRepo.h"
+#include "include/database/PreserveDatabaseFiles.h"
 #include "include/database/IpListsRepo.h"
 #include "include/database/IpScansRepo.h"
 #include "include/database/MarkersRepo.h"
@@ -42,15 +43,7 @@ namespace Configs {
 
     // Renamed rather than deleted, so the file can still be handed over for inspection.
     void DatabaseManager::quarantineDbFile(const std::string& path) {
-        const QString base = QString::fromStdString(path);
-        const QString stamp = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
-        for (const char* suffix : {"", "-wal", "-shm"}) {
-            const QString from = base + suffix;
-            if (!QFile::exists(from)) continue;
-            if (!QFile::rename(from, base + ".broken-" + stamp + suffix) && !QFile::remove(from)) {
-                LOG_WARN(QString("could not quarantine %1").arg(from));
-            }
-        }
+        PreserveDatabaseFiles(QString::fromStdString(path));
     }
 
     std::string DatabaseManager::prepareStatsDb(const std::string& path) {

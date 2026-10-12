@@ -2,9 +2,7 @@
 set -euo pipefail
 olcrtc_revision=f3ad8fb7c0d0fa981423f83269526fa94077c23d
 if [ ! -d olcrtc-source/.git ]; then
-    git init olcrtc-source
-    git -C olcrtc-source fetch --depth=1 https://github.com/openlibrecommunity/olcrtc.git "$olcrtc_revision"
-    git -C olcrtc-source checkout FETCH_HEAD
+    python3 script/fetch_pinned_source.py https://github.com/openlibrecommunity/olcrtc.git "$olcrtc_revision" olcrtc-source
 fi
 test "$(git -C olcrtc-source rev-parse HEAD)" = "$olcrtc_revision"
 mkdir -p olcrtc-source/cmd/qthrone-olcrtc

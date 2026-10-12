@@ -2,9 +2,7 @@
 set -euo pipefail
 revision=74cac6d47bf4c27947348ee957538a2c0728a485
 if [ ! -d openflux-source/.git ]; then
-    git init openflux-source
-    git -C openflux-source fetch --depth=1 https://github.com/p1neappleXpress/OpenFlux.git "$revision"
-    git -C openflux-source checkout FETCH_HEAD
+    python3 script/fetch_pinned_source.py https://github.com/p1neappleXpress/OpenFlux.git "$revision" openflux-source
 fi
 test "$(git -C openflux-source rev-parse HEAD)" = "$revision"
 cp script/openflux/*.go openflux-source/

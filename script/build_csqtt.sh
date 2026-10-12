@@ -2,9 +2,7 @@
 set -euo pipefail
 
 revision=71712b07dbabe16fa43f5a248dc69e1ab9f3a270
-git init csqtt-source
-git -C csqtt-source fetch --depth=1 https://github.com/amurcanov/csqtt.git "$revision"
-git -C csqtt-source checkout FETCH_HEAD
+python3 script/fetch_pinned_source.py https://github.com/amurcanov/csqtt.git "$revision" csqtt-source
 python3 script/prepare_csqtt.py csqtt-source
 rustup toolchain install 1.97.1 --profile minimal
 

@@ -134,7 +134,7 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: artifacts.tgz
-          key: CommonCache-${{ matrix.cross_os }}-${{ matrix.cross_arch }}-${{ hashFiles('script/build_go.sh', 'script/build_openflux.sh', 'script/openflux/**', 'script/build_olcrtc.sh', 'script/olcrtc/**', 'core/**', 'qwdtt/**') }}-${{ matrix.go_version }}
+          key: CommonCache-${{ matrix.cross_os }}-${{ matrix.cross_arch }}-${{ hashFiles('script/build_go.sh', 'script/build_openflux.sh', 'script/openflux/**', 'script/build_olcrtc.sh', 'script/olcrtc/**', 'script/fetch_pinned_source.py', 'transport-sources.lock.json', 'core/**', 'qwdtt/**') }}-${{ matrix.go_version }}
       - name: Install Golang
         if: steps.cache-common.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7.0.0
