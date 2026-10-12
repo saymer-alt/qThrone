@@ -15,7 +15,7 @@ makepkg -si
 
 Start **qThrone** from the application menu or run `qthrone`.
 Settings are stored in the user's configuration directory rather than
-the root-owned installation at `/opt/qThrone`.
+the root-owned installation at `/usr/lib/qthrone`.
 For TUN mode, a working polkit authentication agent is required to approve
 the application's existing privilege setup.
 

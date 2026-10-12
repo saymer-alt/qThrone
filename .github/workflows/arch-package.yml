@@ -2,7 +2,7 @@ name: Arch Linux package
 on:
   push:
     branches: [packaging/archlinux]
-    paths: ['aur/qthrone-bin/**', '.github/workflows/arch-package.yml']
+    paths: ['aur/qthrone-bin/**', '.github/workflows/arch-package.yml', 'script/test_arch_package.sh']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Prepare Arch environment
-        run: pacman -Syu --noconfirm git unzip sudo xorg-server-xvfb xorg-xauth desktop-file-utils namcap
+        run: pacman -Syu --noconfirm git unzip sudo xorg-server-xvfb xorg-xauth xdotool weston desktop-file-utils namcap
       - uses: actions/checkout@v7
       - name: Build and install package
         run: |
@@ -29,12 +29,18 @@ jobs:
         run: |
           cd aur/qthrone-bin
           for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
-            ldd "/opt/qThrone/$binary" >> dependencies.log 2>&1 || true
+            ldd "/usr/lib/qthrone/$binary" >> dependencies.log 2>&1 || true
           done
-          find /opt/qThrone/usr/plugins -name '*.so' -exec ldd '{}' \; >> dependencies.log 2>&1
+          find /usr/lib/qthrone/usr/plugins -name '*.so' -exec ldd '{}' \; >> dependencies.log 2>&1
           if grep 'not found' dependencies.log; then exit 1; fi
-          su builder -c "xvfb-run -a sh -c 'qthrone > /tmp/qthrone-launch.log 2>&1 & pid=\$!; sleep 15; kill -0 \$pid; result=\$?; kill \$pid; exit \$result'"
-          cp /tmp/qthrone-launch.log launch.log
+          su builder -c "bash '$GITHUB_WORKSPACE/script/test_arch_package.sh' '$PWD'"
+      - name: Verify package removal preserves settings
+        run: |
+          test -d /home/builder/.config/qThrone
+          pacman -R --noconfirm qthrone-bin
+          test ! -e /usr/bin/qthrone
+          test ! -e /usr/lib/qthrone
+          test -d /home/builder/.config/qThrone
       - uses: actions/upload-artifact@v7
         if: always()
         with:

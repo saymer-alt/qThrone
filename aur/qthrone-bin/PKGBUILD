@@ -15,17 +15,17 @@ options=('!strip' '!debug')
 source=('qthrone' 'qThrone.desktop')
 source_x86_64=("qThrone-${pkgver}-linux-amd64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-amd64.zip")
 source_aarch64=("qThrone-${pkgver}-linux-arm64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-arm64.zip")
-sha256sums=('7215d35c8f6ae433166110d0f2bb6bcfd54ef3fdd26524b0b66f4e713071cf02' 'ce20612f5cef7613f3c7b98eb6d17ccb9d2bc1b581e5f269ca9b6b2efecaa42c')
+sha256sums=('b79909d2f6e281f4a6ef4306a3ad94f9c8b42a97f3d2004592c85d521c614d79' 'ce20612f5cef7613f3c7b98eb6d17ccb9d2bc1b581e5f269ca9b6b2efecaa42c')
 sha256sums_x86_64=('cf9be2d493cc6236d8c2595135879a9252df99179c7ea7043395c3bba51d6e7c')
 sha256sums_aarch64=('3278e6d39d43ec8b28441a048b02d47dc6171640927d3ece9dd8da53fd051d8e')
 
 package() {
-  install -d "$pkgdir/opt/qThrone"
-  cp -a "$srcdir/qThrone/." "$pkgdir/opt/qThrone/"
+  install -d "$pkgdir/usr/lib/qthrone"
+  cp -a "$srcdir/qThrone/." "$pkgdir/usr/lib/qthrone/"
   # The release omits the library for obsolete wl_shell; modern Wayland uses xdg-shell.
-  rm -f "$pkgdir/opt/qThrone/usr/plugins/wayland-shell-integration/libwl-shell-plugin.so"
+  rm -f "$pkgdir/usr/lib/qthrone/usr/plugins/wayland-shell-integration/libwl-shell-plugin.so"
   for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
-    chmod 755 "$pkgdir/opt/qThrone/$binary"
+    chmod 755 "$pkgdir/usr/lib/qthrone/$binary"
   done
   install -Dm755 "$srcdir/qthrone" "$pkgdir/usr/bin/qthrone"
   install -Dm644 "$srcdir/qThrone.desktop" "$pkgdir/usr/share/applications/qThrone.desktop"
