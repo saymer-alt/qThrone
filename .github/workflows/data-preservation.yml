@@ -1,0 +1,19 @@
+name: Database preservation
+on:
+  push:
+    branches: [security/data-preservation, qthrone]
+    paths: ['include/database/PreserveDatabaseFiles.h', 'src/database/DatabaseManager.cpp', 'script/test_database_preservation.cpp', '.github/workflows/data-preservation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt development files
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev pkg-config
+      - name: Test preservation and failed rename
+        run: |
+          g++ -std=c++17 -fPIC -I. script/test_database_preservation.cpp $(pkg-config --cflags --libs Qt6Core) -o /tmp/test-preservation
+          /tmp/test-preservation
