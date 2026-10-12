@@ -9,7 +9,8 @@
 namespace Configs {
     inline void PreserveDatabaseFiles(
         const QString& base,
-        const std::function<bool(const QString&, const QString&)>& renameFile = QFile::rename) {
+        const std::function<bool(const QString&, const QString&)>& renameFile =
+            [](const QString& from, const QString& to) { return QFile::rename(from, to); }) {
         const QString destination = base + ".broken-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
         for (const char* suffix : {"", "-wal", "-shm"}) {
             const QString from = base + suffix;
