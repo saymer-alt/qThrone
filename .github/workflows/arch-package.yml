@@ -1,0 +1,45 @@
+name: Arch Linux package
+on:
+  push:
+    branches: [packaging/archlinux]
+    paths: ['aur/qthrone-bin/**', '.github/workflows/arch-package.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Prepare Arch environment
+        run: pacman -Syu --noconfirm git unzip sudo xorg-server-xvfb xorg-xauth desktop-file-utils namcap
+      - uses: actions/checkout@v7
+      - name: Build and install package
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: /usr/bin/pacman' > /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          cd aur/qthrone-bin
+          su builder -c "cd '$PWD' && makepkg -s --noconfirm"
+          su builder -c "cd '$PWD' && makepkg --printsrcinfo" > .SRCINFO
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          namcap ./*.pkg.tar.zst | tee namcap.log
+          desktop-file-validate /usr/share/applications/qThrone.desktop
+      - name: Check runtime and graphical launch
+        run: |
+          cd aur/qthrone-bin
+          for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
+            ldd "/opt/qThrone/$binary" >> dependencies.log 2>&1 || true
+          done
+          find /opt/qThrone/usr/plugins -name '*.so' -exec ldd '{}' \; >> dependencies.log 2>&1
+          if grep 'not found' dependencies.log; then exit 1; fi
+          su builder -c "xvfb-run -a sh -c 'qthrone > /tmp/qthrone-launch.log 2>&1 & pid=\$!; sleep 15; kill -0 \$pid; result=\$?; kill \$pid; exit \$result'"
+          cp /tmp/qthrone-launch.log launch.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qthrone-arch-x86_64
+          path: |
+            aur/qthrone-bin/*.pkg.tar.zst
+            aur/qthrone-bin/.SRCINFO
+            aur/qthrone-bin/*.log

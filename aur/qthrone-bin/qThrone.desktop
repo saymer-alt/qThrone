@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=qThrone
+GenericName=Proxy Manager
+Comment=Graphical proxy manager powered by sing-box
+Exec=qthrone
+Icon=qthrone
+StartupWMClass=qThrone
+Terminal=false
+Type=Application
+Categories=Network;
+Keywords=proxy;vpn;network;privacy;

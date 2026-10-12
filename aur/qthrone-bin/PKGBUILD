@@ -1,0 +1,31 @@
+# Maintainer: qThrone maintainers
+pkgname=qthrone-bin
+pkgver=1.1.2
+pkgrel=1
+pkgdesc='Cross-platform graphical proxy manager powered by sing-box'
+arch=('x86_64' 'aarch64')
+url='https://github.com/ttrroyy/qThrone'
+license=('GPL-3.0-or-later')
+provides=('qthrone')
+conflicts=('qthrone' 'qthrone-git')
+depends=('glibc' 'gcc-libs' 'zlib' 'openssl' 'dbus' 'fontconfig' 'freetype2' 'libglvnd' 'libxkbcommon-x11' 'libice' 'libsm' 'libxrender' 'xcb-util-image' 'xcb-util-keysyms' 'xcb-util-renderutil' 'xcb-util-wm' 'wayland' 'polkit' 'libcap')
+makedepends=('unzip')
+optdepends=('noto-fonts-emoji: country flags and emoji' 'qt6-wayland: additional system Wayland integration')
+options=('!strip' '!debug')
+source=('qthrone' 'qThrone.desktop')
+source_x86_64=("qThrone-${pkgver}-linux-amd64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-amd64.zip")
+source_aarch64=("qThrone-${pkgver}-linux-arm64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-arm64.zip")
+sha256sums=('SKIP' 'SKIP')
+sha256sums_x86_64=('cf9be2d493cc6236d8c2595135879a9252df99179c7ea7043395c3bba51d6e7c')
+sha256sums_aarch64=('3278e6d39d43ec8b28441a048b02d47dc6171640927d3ece9dd8da53fd051d8e')
+
+package() {
+  install -d "$pkgdir/opt/qThrone"
+  cp -a "$srcdir/qThrone/." "$pkgdir/opt/qThrone/"
+  for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
+    chmod 755 "$pkgdir/opt/qThrone/$binary"
+  done
+  install -Dm755 "$srcdir/qthrone" "$pkgdir/usr/bin/qthrone"
+  install -Dm644 "$srcdir/qThrone.desktop" "$pkgdir/usr/share/applications/qThrone.desktop"
+  install -Dm644 "$srcdir/qThrone/qThrone.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/qthrone.png"
+}
