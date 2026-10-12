@@ -578,7 +578,7 @@ jobs:
           find /usr/lib/qthrone/usr/plugins -name '*.so' -exec ldd '{}' \; >> dependencies.log 2>&1
           if grep 'not found' dependencies.log; then exit 1; fi
           su builder -c "bash '$GITHUB_WORKSPACE/script/test_arch_package.sh' '$PWD'"
-          QT_QPA_PLATFORM=offscreen su builder -c '/usr/bin/qthrone --self-test-core-startup'
+          su builder -c 'xvfb-run -a dbus-run-session -- /usr/bin/qthrone --self-test-core-startup'
           test -d /home/builder/.config/qThrone
           pacman -R --noconfirm qthrone-bin
           test ! -e /usr/lib/qthrone
