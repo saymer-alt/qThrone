@@ -8,20 +8,22 @@ url='https://github.com/ttrroyy/qThrone'
 license=('GPL-3.0-or-later')
 provides=('qthrone')
 conflicts=('qthrone' 'qthrone-git')
-depends=('glibc' 'gcc-libs' 'zlib' 'openssl' 'dbus' 'fontconfig' 'freetype2' 'libglvnd' 'libxkbcommon-x11' 'libice' 'libsm' 'libxrender' 'xcb-util-image' 'xcb-util-keysyms' 'xcb-util-renderutil' 'xcb-util-wm' 'wayland' 'polkit' 'libcap')
+depends=('glibc' 'gcc-libs' 'zlib' 'openssl' 'dbus' 'fontconfig' 'freetype2' 'libglvnd' 'libxkbcommon-x11' 'libice' 'libsm' 'libxrender' 'xcb-util-image' 'xcb-util-keysyms' 'xcb-util-renderutil' 'xcb-util-wm' 'wayland' 'gtk3' 'hicolor-icon-theme' 'polkit' 'libcap')
 makedepends=('unzip')
-optdepends=('noto-fonts-emoji: country flags and emoji' 'qt6-wayland: additional system Wayland integration')
+optdepends=('noto-fonts-emoji: country flags and emoji')
 options=('!strip' '!debug')
 source=('qthrone' 'qThrone.desktop')
 source_x86_64=("qThrone-${pkgver}-linux-amd64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-amd64.zip")
 source_aarch64=("qThrone-${pkgver}-linux-arm64.zip::${url}/releases/download/v${pkgver}/qThrone-${pkgver}-linux-arm64.zip")
-sha256sums=('SKIP' 'SKIP')
+sha256sums=('7215d35c8f6ae433166110d0f2bb6bcfd54ef3fdd26524b0b66f4e713071cf02' 'ce20612f5cef7613f3c7b98eb6d17ccb9d2bc1b581e5f269ca9b6b2efecaa42c')
 sha256sums_x86_64=('cf9be2d493cc6236d8c2595135879a9252df99179c7ea7043395c3bba51d6e7c')
 sha256sums_aarch64=('3278e6d39d43ec8b28441a048b02d47dc6171640927d3ece9dd8da53fd051d8e')
 
 package() {
   install -d "$pkgdir/opt/qThrone"
   cp -a "$srcdir/qThrone/." "$pkgdir/opt/qThrone/"
+  # The release omits the library for obsolete wl_shell; modern Wayland uses xdg-shell.
+  rm -f "$pkgdir/opt/qThrone/usr/plugins/wayland-shell-integration/libwl-shell-plugin.so"
   for binary in qThrone qThroneCore qThroneUpdater qwdtt olcrtc openflux csqtt-transport; do
     chmod 755 "$pkgdir/opt/qThrone/$binary"
   done
