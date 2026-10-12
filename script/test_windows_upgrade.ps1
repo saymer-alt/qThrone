@@ -3,9 +3,9 @@ $ErrorActionPreference = 'Stop'
 $workspace = Join-Path $env:RUNNER_TEMP 'qthrone-upgrade-test'
 New-Item -ItemType Directory -Path $workspace -Force | Out-Null
 $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases?per_page=100" -Headers @{Accept='application/vnd.github+json'}
-$release = $releases | Where-Object { !$_.draft -and $_.tag_name -ne $Version -and ($_.assets.name -contains "qThrone-$($_.tag_name)-windows64.zip") } | Sort-Object published_at -Descending | Select-Object -First 1
+$release = $releases | Where-Object { !$_.draft -and ($_.tag_name -replace '^v', '') -ne $Version -and ($_.assets.name -contains "qThrone-$($_.tag_name -replace '^v', '')-windows64.zip") } | Sort-Object published_at -Descending | Select-Object -First 1
 if (!$release) { throw 'A previous published portable release is required' }
-$baseline = $release.tag_name
+$baseline = $release.tag_name -replace '^v', ''
 $asset = $release.assets | Where-Object { $_.name -eq "qThrone-$baseline-windows64.zip" }
 if (!$asset) { throw 'The baseline portable release is missing' }
 $oldArchive = Join-Path $workspace 'baseline.zip'
