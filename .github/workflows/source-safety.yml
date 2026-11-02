@@ -1,0 +1,43 @@
+{
+  "name": "Source safety (static only)",
+  "on": {
+    "pull_request": {
+      "branches": [
+        "qthrone"
+      ]
+    },
+    "push": {
+      "branches": [
+        "experimental/keenetic-arm64",
+        "qthrone"
+      ]
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "source-check": {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 5,
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "fetch-depth": 0,
+            "persist-credentials": false,
+            "submodules": false,
+            "lfs": false
+          }
+        },
+        {
+          "name": "Check changed source text without executing it",
+          "env": {
+            "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.before }}"
+          },
+          "run": "python3 - <<'PY'\nimport ast, json, os, subprocess\nbase = os.environ.get(\"BASE_SHA\", \"\")\nif not base or set(base) == {\"0\"}:\n    base = subprocess.check_output([\"git\", \"hash-object\", \"-t\", \"tree\", \"--stdin\"], input=b\"\").decode().strip()\nhead = os.environ[\"GITHUB_SHA\"]\nsubprocess.run([\"git\", \"diff\", \"--check\", base, head], check=True)\npaths = subprocess.check_output([\"git\", \"diff\", \"--name-only\", \"--diff-filter=ACM\", \"-z\", base, head]).split(b\"\\0\")\nchecked = 0\nfor raw in filter(None, paths):\n    path = os.fsdecode(raw)\n    if path.endswith((\".py\", \".json\")):\n        # Parse source text only: never import or execute repository code.\n        content = subprocess.check_output([\"git\", \"show\", head + \":\" + path]).decode(\"utf-8-sig\")\n        if path.endswith(\".py\"):\n            ast.parse(content, filename=path)\n        else:\n            json.loads(content)\n        checked += 1\nprint(\"Changed-source whitespace check passed; Python/JSON files parsed:\", checked)\nPY\n"
+        }
+      ]
+    }
+  }
+}
