@@ -933,7 +933,7 @@ void DialogBasicSettings::on_backup_restore_clicked() {
         this,
         tr("Restore Backup"),
         QDir::homePath(),
-        tr("Rawline Backup (*.rwlbackup)")
+        tr("Rawline Backup (*.rwlbackup)") + QStringLiteral(";;Throne / qThrone (*.thrbackup)")
     );
     if (filePath.isEmpty()) return;
     restoreBackupFile(filePath, {});

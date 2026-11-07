@@ -727,7 +727,7 @@ namespace Configs {
             return Subscription::ProviderRouting::ImportedProfile(command);
         }
 
-        if (text.startsWith("rawline://route/", Qt::CaseInsensitive)) {
+        if (CurrentLinkScheme(text).startsWith("rawline://route/", Qt::CaseInsensitive)) {
             const QUrl u(text);
             if (!u.isValid()) {
                 fatalError->append("Deep link is invalid");
@@ -753,7 +753,7 @@ namespace Configs {
 
         if (doc.isObject()) {
             const QJsonObject root = doc.object();
-            if (root.value("kind").toString() != QStringLiteral("rawline-route-profile")) {
+            if (root.value("kind").toString() != QStringLiteral("rawline-route-profile") && root.value("kind").toString() != QStringLiteral("throne-route-profile")) {
                 fatalError->append("Unrecognized route object");
                 return nullptr;
             }
@@ -827,7 +827,7 @@ namespace Configs {
 
     QList<std::shared_ptr<RouteProfile>> RouteProfile::FromRemoteRoutesLink(const QString& input, bool* wasRemoteRouteLink, QString* error) {
         if (wasRemoteRouteLink) *wasRemoteRouteLink = false;
-        const QString text = input.trimmed();
+        const QString text = CurrentLinkScheme(input.trimmed());
         if (!text.startsWith("rawline://remoteroute/", Qt::CaseInsensitive)) return {};
         if (wasRemoteRouteLink) *wasRemoteRouteLink = true;
 

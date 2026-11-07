@@ -38,7 +38,7 @@ namespace {
             if (event->type() == QEvent::FileOpen) {
                 const auto openEvent = static_cast<QFileOpenEvent *>(event);
                 const QString url = openEvent->url().toString();
-                if (url.startsWith("rawline://")) {
+                if (CurrentLinkScheme(url).startsWith("rawline://")) {
                     Deeplink_Submit(url);
                     return true;
                 }
@@ -124,7 +124,7 @@ namespace GuiStartup {
     }
 
     void HandleLaunchLine([[maybe_unused]] QLocalSocket *socket, const QString &line) {
-        if (line.startsWith("rawline://")) {
+        if (CurrentLinkScheme(line).startsWith("rawline://")) {
             Deeplink_Submit(line);
         } else if (line.startsWith("file://")) {
             LaunchFiles_Submit({QUrl(line).toLocalFile()});
