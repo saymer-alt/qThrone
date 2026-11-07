@@ -17,6 +17,7 @@ cp deployment/${DEST_SUFFIX%-system-qt}/RawlineUpdater $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/qwdtt $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/qwdtt-LICENSE $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/LICENSE $DEST
+cp deployment/${DEST_SUFFIX%-system-qt}/FONTS-LICENSE.txt $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/olcrtc $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/OLCRTC-LICENSE $DEST
 cp deployment/${DEST_SUFFIX%-system-qt}/OLCRTC-SOURCE $DEST

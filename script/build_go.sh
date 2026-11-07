@@ -40,6 +40,7 @@ case "$GOOS" in
 esac
 
 cp LICENSE "$DEST/LICENSE"
+cp res/font/FONTS-LICENSE.txt "$DEST/FONTS-LICENSE.txt"
 
 #### qWDTT: portable userspace bridge (RAW/WG, no host WireGuard interface) ####
 pushd qwdtt
