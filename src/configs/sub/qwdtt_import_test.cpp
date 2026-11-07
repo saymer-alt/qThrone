@@ -376,6 +376,17 @@ int TestQwdttImport() {
             check(geosite, "the imported profile keeps its geosite: categories");
             check(!Configs::RouteProfile::FromShareInput("happ://routing/off", &fatal, &warnings, &oldArray), "routing off is refused outside a subscription");
         }
+        {
+            // github.com/throneproj/routeprofiles still publishes Throne's links.
+            bool remoteLink = false;
+            QString error;
+            const auto bundle = Configs::RouteProfile::FromRemoteRoutesLink(QStringLiteral("throne://remoteroute/aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3Rocm9uZXByb2ovcm91dGVwcm9maWxlcy9wcm9maWxlL0J5cGFzc19SdXNzaWEjQnlwYXNzIFJ1c3NpYQpodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vdGhyb25lcHJvai9yb3V0ZXByb2ZpbGVzL3Byb2ZpbGUvUHJveHlfUnVzc2lhX0Jsb2NrZWQjUHJveHkgUnVzc2lhIEJsb2NrZWQKaHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3Rocm9uZXByb2ovcm91dGVwcm9maWxlcy9wcm9maWxlL1Byb3h5X0FudGl6YXByZXQjUHJveHkgQW50aXphcHJldApodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vdGhyb25lcHJvai9yb3V0ZXByb2ZpbGVzL3Byb2ZpbGUvUHJveHlfUmVmaWx0ZXIjUHJveHkgUmVmaWx0ZXI"), &remoteLink, &error);
+            check(remoteLink && bundle.size() == 4 && bundle.first()->name == "Bypass Russia", "a Throne remoteroute bundle lists its profiles");
+            QString fatal, warnings;
+            bool oldArray = false;
+            const auto route = Configs::RouteProfile::FromShareInput(QStringLiteral("throne://route/eyJraW5kIjoidGhyb25lLXJvdXRlLXByb2ZpbGUiLCJuYW1lIjoiQnlwYXNzIFJ1c3NpYSIsImRlZmF1bHRfb3V0Ym91bmQiOiJwcm94eSIsInJ1bGVzIjpbeyJhY3Rpb24iOiJyb3V0ZSIsImlwX2lzX3ByaXZhdGUiOnRydWUsIm91dGJvdW5kIjoiZGlyZWN0IiwibmFtZSI6InByaXZhdGUiLCJ0eXBlIjoiY3VzdG9tIn1dfQ"), &fatal, &warnings, &oldArray);
+            check(route && route->name == "Bypass Russia", "a Throne route link imports");
+        }
         check(!restored.ParseFromLink("sstp://user:pass@vpn.example.org:0") && !restored.ParseFromLink("sstp://user@vpn.example.org"), "SSTP rejects invalid ports and missing credentials");
         const auto challenge = QByteArray("{\"outbounds\":[{\"server\":\"127.0.0.1\",\"tag\":\"HWID missing\"}]}");
         check(Subscription::RequiresHwid(challenge) && Subscription::RequiresHwid(challenge.toBase64()), "HWID-required placeholder is recognized before import");
