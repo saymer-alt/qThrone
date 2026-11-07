@@ -11,7 +11,7 @@ from urllib.request import urlopen, urlretrieve
 from pathlib import Path
 from typing import Union
 
-REPO = "ttrroyy/RawlineDesktop"
+REPO = "ttrroyy/Rawline"
 
 APPDIR = Path("/opt/Rawline")
 DESKTOPDIR = Path("/usr/share/applications")

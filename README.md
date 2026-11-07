@@ -16,7 +16,7 @@
 [![sing-box](https://img.shields.io/badge/sing--box-1F2937?style=for-the-badge)](https://github.com/SagerNet/sing-box)
 [![Xray](https://img.shields.io/badge/Xray-2563EB?style=for-the-badge)](https://github.com/XTLS/Xray-core)
 
-[![Downloads](https://img.shields.io/github/downloads/ttrroyy/RawlineDesktop/total?label=downloads-total&color=brightgreen&cacheSeconds=3600)](https://github.com/ttrroyy/RawlineDesktop/releases)
+[![Downloads](https://img.shields.io/github/downloads/ttrroyy/Rawline/total?label=downloads-total&color=brightgreen&cacheSeconds=3600)](https://github.com/ttrroyy/Rawline/releases)
 
 </div>
 
@@ -28,7 +28,7 @@
 
 ## Скачать
 
-Свежая версия - в [Releases](https://github.com/ttrroyy/RawlineDesktop/releases/latest).
+Свежая версия - в [Releases](https://github.com/ttrroyy/Rawline/releases/latest).
 
 - Windows: установщик `windows-universal-installer.exe` или архивы `windows64`, `windows-arm64`, `windows32`. Для старых систем - `windowslegacy64`.
 - Linux: пакеты `.deb`, `.rpm`, Arch (`.pkg.tar.zst`) и архивы `linux-amd64` / `linux-arm64`. Сборки `system-qt` используют Qt из системы.

@@ -769,7 +769,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         QMessageBox::about(this, tr("About Rawline"),
             QStringLiteral("<b>Rawline %1</b><br><br>").arg(QString(NKR_VERSION))
             + tr("Free software under the GNU General Public License v3.0, provided without any warranty.")
-            + QStringLiteral("<br><br><a href=\"https://github.com/ttrroyy/RawlineDesktop\">github.com/ttrroyy/RawlineDesktop</a><br>")
+            + QStringLiteral("<br><br><a href=\"https://github.com/ttrroyy/Rawline\">github.com/ttrroyy/Rawline</a><br>")
             + tr("Based on %1").arg(QStringLiteral("<a href=\"https://github.com/throneproj/Throne\">Throne</a>")));
     });
 
