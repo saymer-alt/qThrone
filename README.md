@@ -2,7 +2,7 @@
 
 <img src="docs/screenshots/icon-tun.png" width="128" alt="Rawline">
 
-# Rawline
+# Rawline (бывший qThrone)
 
 **Клиент для Windows, Linux и macOS на ядрах sing-box и Xray**
 
