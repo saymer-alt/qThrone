@@ -41,7 +41,7 @@ jobs:
           test -f "deployment/Rawline-$VERSION-windows64.zip"
           test -f "deployment/Rawline-$VERSION-macos-arm64.zip"
           python3 script/release_notes.py > "$RUNNER_TEMP/release-notes.md"
-          TAG="v$VERSION"
+          TAG="rawline-$VERSION"
           retry() {
             for attempt in 1 2 3; do
               if "$@"; then return 0; fi

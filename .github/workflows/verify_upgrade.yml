@@ -123,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 script/release_notes.py > "$RUNNER_TEMP/release-notes.md"
-          RELEASE_GIT_TAG=$(python3 -c 'import re,sys; m=re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(.*)",sys.argv[1]); assert m; print("v"+m[1]+"."+m[2]+"."+(m[3] or "0")+m[4])' "$RELEASE_TAG")
+          RELEASE_GIT_TAG=$(python3 -c 'import re,sys; m=re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(.*)",sys.argv[1]); assert m; print("rawline-"+m[1]+"."+m[2]+(("."+m[3]) if m[3] else "")+m[4])' "$RELEASE_TAG")
           tag_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_GIT_TAG" --jq '.object.sha')
           test "$tag_sha" = "$RELEASE_SHA"
           args=()
