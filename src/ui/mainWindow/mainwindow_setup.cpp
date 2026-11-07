@@ -762,6 +762,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->actionSpeedtest_Current->setEnabled(runningSnapshot() != nullptr);
     });
 
+    // GPL-3.0 asks an interactive program to show its license and warranty notice.
+    auto actionAbout = new QAction(tr("About Rawline"), this);
+    ui->menu_program->insertAction(ui->menu_exit, actionAbout);
+    connect(actionAbout, &QAction::triggered, this, [this] {
+        QMessageBox::about(this, tr("About Rawline"),
+            QStringLiteral("<b>Rawline %1</b><br><br>").arg(QString(NKR_VERSION))
+            + tr("Free software under the GNU General Public License v3.0, provided without any warranty.")
+            + QStringLiteral("<br><br><a href=\"https://github.com/ttrroyy/RawlineDesktop\">github.com/ttrroyy/RawlineDesktop</a><br>")
+            + tr("Based on %1").arg(QStringLiteral("<a href=\"https://github.com/throneproj/Throne\">Throne</a>")));
+    });
+
     connect(ui->actionAdd_New_Group, &QAction::triggered, this, [=,this]{
         auto ent = Configs::dataManager->groupsRepo->NewGroup();
         auto dialog = new DialogEditGroup(ent, this);

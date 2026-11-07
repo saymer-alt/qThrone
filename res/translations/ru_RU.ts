@@ -8434,6 +8434,18 @@ Improves hole-punching reliability. Requires IPv4.</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <source>About Rawline</source>
+        <translation>О программе</translation>
+    </message>
+    <message>
+        <source>Free software under the GNU General Public License v3.0, provided without any warranty.</source>
+        <translation>Свободная программа под лицензией GNU General Public License v3.0, распространяется без каких-либо гарантий.</translation>
+    </message>
+    <message>
+        <source>Based on %1</source>
+        <translation>Основана на %1</translation>
+    </message>
+    <message>
         <source>Connect</source>
         <translation>Подключиться</translation>
     </message>

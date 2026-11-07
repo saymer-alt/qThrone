@@ -293,6 +293,7 @@ Keywords=proxy;vpn;network;privacy;
                     install(f, APPDIR / "usr" / rel, 0o644)
             install(tmpdir / "Rawline/Rawline.png", APPDIR / "Rawline.png", 0o644)
             install(tmpdir / "Rawline/qwdtt-LICENSE", APPDIR / "qwdtt-LICENSE", 0o644)
+            install(tmpdir / "Rawline/LICENSE", APPDIR / "LICENSE", 0o644)
             for name in ("MRTT-LICENSE", "MRTT-SOURCE", "mrtt-source.tar.gz", "CSQTT-LICENSE", "CSQTT-SOURCE", "csqtt-source.tar.gz", "CSQTT-Compat-LICENSE", "CSQTT-Compat-SOURCE", "csqtt-compat-source.tar.gz", "OpenFlux-LICENSE", "OpenFlux-SOURCE", "openflux-source.tar.gz", "OLCRTC-LICENSE", "OLCRTC-SOURCE", "olcrtc-source.tar.gz",
                          "VayDNS-LICENSE", "VayDNS-SOURCE", "vaydns-source.tar.gz", "MasterDnsVPN-LICENSE", "MasterDnsVPN-SOURCE", "masterdns-source.tar.gz",
                          "CottenDNS-LICENSE", "CottenDNS-SOURCE", "cottendns-source.tar.gz", "Soar-LICENSE", "Soar-SOURCE", "soar-source.tar.gz",
