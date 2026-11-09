@@ -5,6 +5,7 @@
 #include <QPalette>
 #include <QColor>
 #include <QMap>
+#include <QTimer>
 
 #ifdef Q_OS_MACOS
 #include <QEvent>
@@ -352,7 +353,7 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
     if (enteringNew) {
         // The new interface draws itself; Fusion follows its palette and sheet everywhere else.
         qApp->setStyleSheet("");
-        qApp->setStyle("Fusion");
+        qApp->setStyle(NewStyle::createStyle());
         qApp->setPalette(NewStyle::palette());
         themeSheet = NewStyle::styleSheet();
         if (!leavingNew) system_font_family = qApp->font().family();
@@ -410,6 +411,12 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
     for (const auto pixmap : {QStyle::SP_MessageBoxCritical, QStyle::SP_MessageBoxWarning}) standardIcon(pixmap);
 
     emit themeChanged(theme);
+
+    // Leaving the new look also re-creates the window without its own frame; applying the classic theme once more
+    // after that, on a settled window, gives it exactly the state a start with this theme gives.
+    if (leavingNew && !enteringNew) {
+        QTimer::singleShot(0, this, [this, theme] { if (current_theme == theme) ApplyTheme(theme, true); });
+    }
 }
 
 QIcon ThemeManager::standardIcon(QStyle::StandardPixmap pixmap) {

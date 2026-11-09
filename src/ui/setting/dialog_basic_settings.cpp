@@ -365,8 +365,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     // Custom stylesheet themes, not QStyleFactory keys.
     ui->theme->addItems({"FlatGray", "LightBlue", "SoftPink", "BlackSoft"});
     // The new interface: the mobile app's look, in its two themes.
-    ui->theme->addItem(tr("New OLED"), QString::fromLatin1(NewStyle::OledTheme));
-    ui->theme->addItem(tr("New White"), QString::fromLatin1(NewStyle::WhiteTheme));
+    ui->theme->addItem(tr("Rawline OLED"), QString::fromLatin1(NewStyle::OledTheme));
+    ui->theme->addItem(tr("Rawline White"), QString::fromLatin1(NewStyle::WhiteTheme));
     ui->enable_custom_icon->setChecked(Configs::dataManager->settingsRepo->use_custom_icons);
     ui->follow_status_in_taskbar->setChecked(Configs::dataManager->settingsRepo->follow_status_in_taskbar);
     ui->follow_status_in_taskbar->setEnabled(ui->enable_custom_icon->isChecked());
@@ -671,6 +671,8 @@ QJsonObject DialogBasicSettings::formStateWithoutDecoration() const {
     QJsonObject state;
     for (auto *widget : findChildren<QWidget *>()) {
         if (widget == ui->seasonal_decoration || ui->seasonal_decoration->isAncestorOf(widget)) continue;
+        // The theme applies at once and touches no connection, so it asks for no restart.
+        if (widget == ui->theme || ui->theme->isAncestorOf(widget)) continue;
         const auto key = widget->objectName();
         if (key.isEmpty()) continue;
         if (auto *combo = qobject_cast<QComboBox *>(widget)) {

@@ -76,7 +76,7 @@ inline const NewIconPath newIcon_clock[] = {
     {"M21,12A9,9 0,1 1,3 12A9,9 0,1 1,21 12 M12,6L12,12L16,15", 1.8f},
 };
 inline const NewIconPath newIcon_speedtest[] = {
-    {"M8,4 L8,19 M4.5,15.5 L8,19 L11.5,15.5 M16,20 L16,5 M12.5,8.5 L16,5 L19.5,8.5", 1.7f},
+    {"M4.2,18 A9,9 0 1 1 19.8,18 M5.94,10 L7.15,10.7 M12,6.5 L12,7.9 M18.06,10 L16.85,10.7 M13.6,13.5 A1.6,1.6 0 1 1 10.4,13.5 A1.6,1.6 0 1 1 13.6,13.5 M12.8,12.1 L15.3,7.8", 1.7f},
 };
 inline const NewIconData newIcons[] = {
     {"settings", 24.f, newIcon_settings, 1},

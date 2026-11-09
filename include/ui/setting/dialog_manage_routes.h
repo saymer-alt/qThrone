@@ -44,6 +44,8 @@ private:
 
     bool tryImportRemoteRoutesLink(const QString& text);
 
+    void newProviderProfile();
+
     void updateRemoteProfiles(const QList<std::shared_ptr<Configs::RouteProfile>>& profiles);
 
     // routeUpdateRunning is UI-thread only; routeUpdateCancel is set there and polled by the worker.

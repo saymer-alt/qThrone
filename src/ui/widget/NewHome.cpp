@@ -34,6 +34,10 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
+#include <QProxyStyle>
+#include <QStyleFactory>
+#include <QStyleOption>
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -49,6 +53,13 @@
 #include <algorithm>
 #include <cmath>
 #include <tuple>
+
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 static QString T(const char *text) { return QCoreApplication::translate("NewHome", text); }
 
@@ -113,6 +124,8 @@ namespace {
             }
             return s.mid(begin, i - begin).toDouble();
         };
+        // Two statements: the order of arguments in one call is unspecified, and MSVC reads y before x.
+        const auto point = [&] { const qreal x = number(); const qreal y = number(); return QPointF(x, y); };
         while (true) {
             skip();
             if (i >= s.size()) break;
@@ -121,23 +134,23 @@ namespace {
             const bool rel = cmd.isLower();
             switch (cmd.toUpper().unicode()) {
             case 'M': {
-                QPointF p(number(), number());
+                QPointF p = point();
                 if (rel) p += cur;
                 path.moveTo(p); cur = start = p;
                 cmd = rel ? 'l' : 'L';
                 break;
             }
-            case 'L': { QPointF p(number(), number()); if (rel) p += cur; path.lineTo(p); cur = p; break; }
+            case 'L': { QPointF p = point(); if (rel) p += cur; path.lineTo(p); cur = p; break; }
             case 'H': { qreal x = number(); if (rel) x += cur.x(); cur.setX(x); path.lineTo(cur); break; }
             case 'V': { qreal y = number(); if (rel) y += cur.y(); cur.setY(y); path.lineTo(cur); break; }
             case 'C': {
-                QPointF c1(number(), number()), c2(number(), number()), p(number(), number());
+                QPointF c1 = point(), c2 = point(), p = point();
                 if (rel) { c1 += cur; c2 += cur; p += cur; }
                 path.cubicTo(c1, c2, p); cur = p;
                 break;
             }
             case 'Q': {
-                QPointF c1(number(), number()), p(number(), number());
+                QPointF c1 = point(), p = point();
                 if (rel) { c1 += cur; p += cur; }
                 path.quadTo(c1, p); cur = p;
                 break;
@@ -146,7 +159,7 @@ namespace {
                 const qreal rx = number(), ry = number();
                 number();
                 const bool large = number() != 0, sweep = number() != 0;
-                QPointF p(number(), number());
+                QPointF p = point();
                 if (rel) p += cur;
                 arcTo(path, cur, p, rx, ry, large, sweep); cur = p;
                 break;
@@ -163,30 +176,146 @@ namespace {
         return nullptr;
     }
 
-    // Every control that acts gets the system's pointing hand, in both interfaces; and in the new one a menu
-    // gets round corners, which a stylesheet radius only shows on a window without a background of its own.
+    // In the new style every control that acts gets the system's pointing hand; the classic one keeps the arrow.
+    void giveHand(QWidget *widget) {
+        if (widget->testAttribute(Qt::WA_SetCursor)) return;
+        if (qobject_cast<QAbstractButton *>(widget) || qobject_cast<QComboBox *>(widget) || qobject_cast<QTabBar *>(widget) ||
+            qobject_cast<QMenu *>(widget) || qobject_cast<QMenuBar *>(widget) || qobject_cast<QSlider *>(widget)) {
+            widget->setCursor(Qt::PointingHandCursor);
+            widget->setProperty("newHand", true);
+        }
+    }
+
+    // A menu gets round corners, which a stylesheet radius only shows on a window without a background of its own;
+    // a list popup and a tooltip get the system's round corners.
     class MenuCorners : public QObject {
     public:
         using QObject::QObject;
     protected:
         bool eventFilter(QObject *watched, QEvent *event) override {
-            if (event->type() == QEvent::Polish && watched->isWidgetType()) {
-                auto *widget = static_cast<QWidget *>(watched);
-                if (!widget->testAttribute(Qt::WA_SetCursor) &&
-                    (qobject_cast<QAbstractButton *>(widget) || qobject_cast<QComboBox *>(widget) || qobject_cast<QTabBar *>(widget) ||
-                     qobject_cast<QMenu *>(widget) || qobject_cast<QMenuBar *>(widget) || qobject_cast<QSlider *>(widget))) {
-                    widget->setCursor(Qt::PointingHandCursor);
-                }
-            }
-            if (event->type() == QEvent::Polish && NewStyle::active()) {
+            if (!NewStyle::active() || !watched->isWidgetType()) return false;
+            auto *widget = static_cast<QWidget *>(watched);
+            if (event->type() == QEvent::Polish) {
+                giveHand(widget);
                 if (auto *menu = qobject_cast<QMenu *>(watched); menu && !menu->testAttribute(Qt::WA_TranslucentBackground)) {
                     menu->setAttribute(Qt::WA_TranslucentBackground);
                     menu->setWindowFlag(Qt::NoDropShadowWindowHint);
+                }
+            } else if (event->type() == QEvent::Show && widget->isWindow() &&
+                       (widget->inherits("QComboBoxPrivateContainer") || widget->inherits("QTipLabel"))) {
+                NewStyle::roundCorners(widget, true);
+            }
+            return false;
+        }
+    };
+
+    // A second press on the button that opened a popup closes it, rather than closing and opening it again.
+    class ReopenGuard : public QObject {
+    public:
+        ReopenGuard(QWidget *popup, QWidget *anchor) : QObject(popup), anchor(anchor) {
+            setObjectName(QStringLiteral("newReopenGuard"));
+            popup->installEventFilter(this);
+        }
+        QPointer<QWidget> anchor;
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override {
+            auto *popup = static_cast<QWidget *>(watched);
+            if (event->type() == QEvent::Show) popup->setAttribute(Qt::WA_NoMouseReplay, false);
+            if (event->type() == QEvent::MouseButtonPress && anchor) {
+                const QPoint global = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
+                if (!popup->rect().contains(popup->mapFromGlobal(global)) && QRect(anchor->mapToGlobal(QPoint()), anchor->size()).contains(global)) {
+                    popup->setAttribute(Qt::WA_NoMouseReplay);
                 }
             }
             return false;
         }
     };
+
+    void guardReopen(QWidget *popup, QWidget *anchor) {
+        if (auto *guard = popup->findChild<QObject *>(QStringLiteral("newReopenGuard"), Qt::FindDirectChildrenOnly)) static_cast<ReopenGuard *>(guard)->anchor = anchor;
+        else new ReopenGuard(popup, anchor);
+    }
+
+    // Fusion under the new palette, with check boxes, radio buttons and menu ticks drawn smooth in the theme's ink.
+    class NewProxyStyle : public QProxyStyle {
+    public:
+        NewProxyStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
+        void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *p, const QWidget *widget) const override {
+            const bool on = option->state & State_On, partial = option->state & State_NoChange;
+            const bool hover = option->state & State_MouseOver;
+            const QColor ink = NewStyle::text();
+            switch (element) {
+            case PE_IndicatorCheckBox:
+            case PE_IndicatorItemViewItemCheck:
+            case PE_IndicatorRadioButton: {
+                const qreal side = std::min(option->rect.width(), option->rect.height());
+                QRectF box(0, 0, side, side);
+                box.moveCenter(QRectF(option->rect).center());
+                box.adjust(.75, .75, -.75, -.75);
+                p->save();
+                p->setRenderHint(QPainter::Antialiasing);
+                if (!(option->state & State_Enabled)) p->setOpacity(.45);
+                const bool radio = element == PE_IndicatorRadioButton;
+                if ((on || partial) && !radio) { p->setPen(Qt::NoPen); p->setBrush(ink); }
+                else {
+                    p->setPen(QPen(on ? ink : withAlpha(NewStyle::muted(), hover ? 235 : 175), 1.3));
+                    p->setBrush(hover ? NewStyle::overlay(16) : QColor(Qt::transparent));
+                }
+                if (radio) p->drawEllipse(box);
+                else p->drawRoundedRect(box, box.width() * .3, box.width() * .3);
+                const qreal x = box.left(), y = box.top(), s = box.width();
+                if (radio && on) {
+                    p->setPen(Qt::NoPen);
+                    p->setBrush(ink);
+                    p->drawEllipse(box.center(), s * .26, s * .26);
+                } else if (on) {
+                    p->setPen(QPen(NewStyle::background(), std::max<qreal>(1.4, s * .13), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                    p->setBrush(Qt::NoBrush);
+                    p->drawPolyline(QPolygonF{QPointF(x + s * .26, y + s * .53), QPointF(x + s * .43, y + s * .70), QPointF(x + s * .75, y + s * .33)});
+                } else if (partial) {
+                    p->setPen(QPen(NewStyle::background(), std::max<qreal>(1.4, s * .13), Qt::SolidLine, Qt::RoundCap));
+                    p->drawLine(QPointF(x + s * .28, y + s / 2), QPointF(x + s * .72, y + s / 2));
+                }
+                p->restore();
+                return;
+            }
+            case PE_IndicatorMenuCheckMark: {
+                const qreal s = std::min(option->rect.width(), option->rect.height()) * .8;
+                QRectF box(0, 0, s, s);
+                box.moveCenter(QRectF(option->rect).center());
+                p->save();
+                p->setRenderHint(QPainter::Antialiasing);
+                if (!(option->state & State_Enabled)) p->setOpacity(.45);
+                p->setPen(QPen(ink, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                p->setBrush(Qt::NoBrush);
+                const qreal x = box.left(), y = box.top();
+                p->drawPolyline(QPolygonF{QPointF(x + s * .18, y + s * .54), QPointF(x + s * .4, y + s * .76), QPointF(x + s * .84, y + s * .26)});
+                p->restore();
+                return;
+            }
+            default:
+                QProxyStyle::drawPrimitive(element, option, p, widget);
+            }
+        }
+    };
+}
+
+QStyle *NewStyle::createStyle() { return new NewProxyStyle; }
+
+void NewStyle::roundCorners(QWidget *window, bool compact) {
+#ifdef Q_OS_WIN
+    // Windows 11 rounds a window without a frame only when asked; older systems ignore the attribute.
+    using SetAttribute = HRESULT(WINAPI *)(HWND, DWORD, LPCVOID, DWORD);
+    static const auto set = [] {
+        const HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
+        return dwm ? reinterpret_cast<SetAttribute>(GetProcAddress(dwm, "DwmSetWindowAttribute")) : nullptr;
+    }();
+    if (!set || !window) return;
+    const DWORD preference = compact ? 3 : 2; // DWMWCP_ROUNDSMALL, DWMWCP_ROUND
+    set(reinterpret_cast<HWND>(window->winId()), 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &preference, sizeof preference);
+#else
+    Q_UNUSED(window) Q_UNUSED(compact)
+#endif
 }
 
 bool NewStyle::isTheme(const QString &theme) {
@@ -197,12 +326,16 @@ void NewStyle::setTheme(const QString &theme) {
     static MenuCorners *corners = nullptr;
     if (!corners) { corners = new MenuCorners(qApp); qApp->installEventFilter(corners); }
     if (isTheme(g_theme) && !isTheme(theme)) {
-        // Back in the classic look: menus get their own background again.
+        // Back in the classic look: menus get their own background again, and every control its own cursor.
         for (auto *widget : QApplication::allWidgets()) {
             if (auto *menu = qobject_cast<QMenu *>(widget)) menu->setAttribute(Qt::WA_TranslucentBackground, false);
+            if (widget->property("newHand").toBool()) { widget->unsetCursor(); widget->setProperty("newHand", QVariant()); }
         }
     }
+    const bool entering = !isTheme(g_theme) && isTheme(theme);
     g_theme = theme;
+    // Controls made before the switch are polished already.
+    if (entering) for (auto *widget : QApplication::allWidgets()) giveHand(widget);
 }
 
 bool NewStyle::active() { return isTheme(g_theme); }
@@ -283,7 +416,7 @@ QString NewStyle::styleSheet() {
     const QString glass = QStringLiteral("qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 %1,stop:1 %2)").arg(rgba(glassTop), rgba(glassBottom));
     return QStringLiteral(
         "QMainWindow, QDialog { background: %1; }\n"
-        "QToolTip { background: %2; color: %3; border: 1px solid %4; border-radius: 10px; padding: 6px 10px; }\n"
+        "QToolTip { background: %2; color: %3; border: 1px solid %4; padding: 6px 10px; }\n"
         "QMenu { background: %5; border: 1px solid %4; border-radius: 16px; padding: 6px; }\n"
         "QMenu::item { padding: 7px 18px 7px 14px; border-radius: 12px; background: transparent; color: %3; }\n"
         "QMenu::item:selected { background: %6; }\n"
@@ -301,9 +434,12 @@ QString NewStyle::styleSheet() {
         "QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox, QComboBox, QKeySequenceEdit { background: %12; border: 1px solid %9; border-radius: 12px; padding: 5px 10px; selection-background-color: %13; selection-color: %3; }\n"
         "QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QAbstractSpinBox:focus, QComboBox:focus { border: 1px solid %11; }\n"
         "QComboBox::drop-down { border: none; width: 22px; }\n"
-        "QComboBox QAbstractItemView { background: %2; border: 1px solid %4; selection-background-color: %6; outline: 0; padding: 4px; }\n"
+        "QComboBox QAbstractItemView { background: %2; border: none; selection-background-color: %6; outline: 0; padding: 4px; }\n"
+        "QComboBox QAbstractItemView::item, QListView::item { min-height: 26px; padding: 2px 8px; border-radius: 8px; border: none; color: %3; }\n"
+        "QComboBox QAbstractItemView::item:hover, QListView::item:hover { background: %6; }\n"
+        "QComboBox QAbstractItemView::item:selected, QListView::item:selected { background: %13; color: %3; }\n"
         "QTabWidget::pane { border: 1px solid %9; border-radius: 18px; background: transparent; top: -1px; }\n"
-        "QTabBar::tab { background: transparent; border: 1px solid %9; border-radius: 12px; padding: 6px 14px; margin: 2px 3px; color: %7; }\n"
+        "QTabBar::tab { background: transparent; border: 1px solid %9; border-radius: 12px; padding: 5px 11px; margin: 2px 2px; color: %7; }\n"
         "QTabBar::tab:selected { background: %13; color: %3; border: 1px solid %14; }\n"
         "QTabBar::tab:hover:!selected { background: %6; }\n"
         "QHeaderView { background: transparent; }\n"
@@ -867,7 +1003,6 @@ namespace {
         }
         void showAt(const QPoint &pos) {
             move(pos + QPoint(0, 10));
-            setWindowOpacity(0);
             show();
             auto *anim = new QVariantAnimation(this);
             anim->setDuration(220);
@@ -875,9 +1010,7 @@ namespace {
             anim->setEndValue(1.0);
             anim->setEasingCurve(softCurve());
             connect(anim, &QVariantAnimation::valueChanged, this, [this, pos](const QVariant &v) {
-                const qreal t = v.toReal();
-                setWindowOpacity(std::min<qreal>(1, t * 1.4));
-                move(pos + QPoint(0, qRound(10 * (1 - t))));
+                move(pos + QPoint(0, qRound(10 * (1 - v.toReal()))));
             });
             anim->start(QAbstractAnimation::DeleteWhenStopped);
         }
@@ -886,7 +1019,7 @@ namespace {
             QPainter p(this);
             p.setRenderHint(QPainter::Antialiasing);
             p.setPen(QPen(NewStyle::outline(), 1));
-            p.setBrush(NewStyle::light() ? QColor(250, 250, 252, 250) : QColor(10, 10, 12, 250));
+            p.setBrush(NewStyle::light() ? QColor(250, 250, 252) : QColor(12, 12, 14));
             p.drawRoundedRect(QRectF(rect()).adjusted(.5, .5, -.5, -.5), 28, 28);
         }
     };
@@ -902,9 +1035,18 @@ namespace {
 NewTitleBar::NewTitleBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(36);
     auto *row = new QHBoxLayout(this);
-    row->setContentsMargins(0, 4, 0, 0);
+    row->setContentsMargins(2, 4, 0, 0);
     row->setSpacing(2);
-    row->addStretch();
+    m_icon = new QLabel(this);
+    m_icon->setFixedSize(16, 16);
+    m_title = new QLabel(this);
+    m_title->setFont(NewStyle::font(12));
+    m_title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_title->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_icon->setAttribute(Qt::WA_TransparentForMouseEvents);
+    row->addWidget(m_icon);
+    row->addSpacing(8);
+    row->addWidget(m_title, 1);
     auto *minimize = new WindowButton(WindowButton::Minimize, this);
     auto *maximize = new WindowButton(WindowButton::Maximize, this);
     auto *close = new WindowButton(WindowButton::Close, this);
@@ -917,6 +1059,20 @@ NewTitleBar::NewTitleBar(QWidget *parent) : QWidget(parent) {
     row->addWidget(minimize);
     row->addWidget(maximize);
     row->addWidget(close);
+}
+
+void NewTitleBar::follow(QWidget *window) {
+    if (m_window == window) return;
+    m_window = window;
+    window->installEventFilter(this);
+    m_icon->setPixmap(window->windowIcon().pixmap(16, 16));
+    m_title->setText(window->windowTitle());
+}
+
+bool NewTitleBar::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_window && event->type() == QEvent::WindowTitleChange) m_title->setText(m_window->windowTitle());
+    if (watched == m_window && event->type() == QEvent::WindowIconChange) m_icon->setPixmap(m_window->windowIcon().pixmap(16, 16));
+    return QWidget::eventFilter(watched, event);
 }
 
 void NewTitleBar::mousePressEvent(QMouseEvent *e) {
@@ -943,10 +1099,10 @@ void NewProfileDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, 
     const bool hover = option.state & QStyle::State_MouseOver;
     const int id = index.data(ProfilesTableModel::ProfileIdRole).toInt();
     const QColor ink = NewStyle::text(), dim = NewStyle::muted();
-    NewStyle::paintGlass(*p, row, 20, selected ? ink : QColor());
-    if (hover) {
+    NewStyle::paintGlass(*p, row, 20, id == runningId ? ink : QColor());
+    if (hover || selected) {
         p->setPen(Qt::NoPen);
-        p->setBrush(NewStyle::overlay(10));
+        p->setBrush(NewStyle::overlay(hover && selected ? 16 : 10));
         p->drawRoundedRect(row.adjusted(.5, .5, -.5, -.5), 20, 20);
     }
     QString name = index.siblingAtColumn(ProfilesTableModel::ColName).data().toString().trimmed();
@@ -977,25 +1133,34 @@ void NewProfileDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, 
     p->setFont(NewStyle::font(12));
     const int resultWidth = std::clamp(p->fontMetrics().horizontalAdvance(result) + 12, 62, 200);
     const QRectF resultBox(chevron.left() - resultWidth, row.center().y() - 16, resultWidth, 32);
-    if (testState == 1 || (testState == 2 && result.isEmpty())) {
+    const bool measuring = testState == 2 && index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(ProfilesTableModel::TestCountryRole).toString().isEmpty();
+    if (testState == 1) {
         p->setPen(QPen(ink, 2, Qt::SolidLine, Qt::RoundCap));
         p->setBrush(Qt::NoBrush);
         const QRectF spin(resultBox.center().x() - 9, resultBox.center().y() - 9, 18, 18);
         p->drawArc(spin, int(-spinAngle * 16), 270 * 16);
+    } else if (measuring) {
+        // The speed test: a gauge whose needle sweeps, as the classic table and the mobile rows show it.
+        const QPointF c(resultBox.center().x(), resultBox.center().y() + 3);
+        const qreal r = 10;
+        p->setBrush(Qt::NoBrush);
+        p->setPen(QPen(withAlpha(ink, 90), 2, Qt::SolidLine, Qt::RoundCap));
+        p->drawArc(QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r), -20 * 16, 220 * 16);
+        const qreal swing = std::sin(spinAngle * M_PI / 180);
+        const qreal angle = (90 - 95 * swing) * M_PI / 180;
+        p->setPen(QPen(ink, 2, Qt::SolidLine, Qt::RoundCap));
+        p->drawArc(QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r), 200 * 16, -int((110 + 95 * swing) * 16));
+        p->drawLine(c, c + QPointF(std::cos(angle) * r * .72, -std::sin(angle) * r * .72));
+        p->setPen(Qt::NoPen);
+        p->setBrush(ink);
+        p->drawEllipse(c, 2, 2);
     } else if (!result.isEmpty()) {
         const QVariant colour = index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(Qt::ForegroundRole);
         p->setPen(colour.isValid() ? colour.value<QColor>() : dim);
         p->drawText(resultBox, Qt::AlignCenter, p->fontMetrics().elidedText(result, Qt::ElideRight, int(resultBox.width())));
     }
     const qreal textLeft = badge.right() + 10;
-    qreal textRight = resultBox.left() - 4;
-    if (id == runningId) {
-        // The running server: a dot in the accent before its result.
-        p->setPen(Qt::NoPen);
-        p->setBrush(ink);
-        p->drawEllipse(QPointF(textRight - 4, row.center().y()), 3.5, 3.5);
-        textRight -= 14;
-    }
+    const qreal textRight = resultBox.left() - 4;
     p->setFont(NewStyle::font(15, QFont::Bold));
     p->setPen(ink);
     const qreal width = textRight - textLeft;
@@ -1055,7 +1220,7 @@ void NewProfileList::mousePressEvent(QMouseEvent *e) {
 
 void NewProfileList::mouseMoveEvent(QMouseEvent *e) {
     const QModelIndex index = indexAt(e->pos());
-    viewport()->setCursor(index.isValid() && NewProfileDelegate::chevronRect(visualRect(index)).contains(e->pos()) ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    viewport()->setCursor(index.isValid() ? Qt::PointingHandCursor : Qt::ArrowCursor);
     QListView::mouseMoveEvent(e);
 }
 
@@ -1103,14 +1268,15 @@ NewHome::NewHome(MainWindow *window) : QWidget(nullptr), mw(window) {
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(16, 0, 16, 16);
     root->setSpacing(0);
-    root->addWidget(new NewTitleBar(this));
+    m_titleBar = new NewTitleBar(this);
+    root->addWidget(m_titleBar);
     auto *columns = new QHBoxLayout;
     columns->setSpacing(12);
     root->addLayout(columns, 1);
 
     // The header and the connect button in a side column, so the server list keeps the full height.
     auto *side = new QWidget(this);
-    side->setFixedWidth(280);
+    side->setFixedWidth(300);
     auto *sideLayout = new QVBoxLayout(side);
     sideLayout->setContentsMargins(0, 0, 0, 0);
     sideLayout->setSpacing(0);
@@ -1158,7 +1324,10 @@ void NewHome::buildSide(QVBoxLayout *side) {
     auto *settings = new NewTile(NewTile::Icon);
     settings->setIconName("settings");
     settings->setToolTip(T("Settings"));
-    connect(settings, &QAbstractButton::clicked, this, [this] { mw->ui->menu_basic_settings->trigger(); });
+    connect(settings, &QAbstractButton::clicked, this, [this, settings] {
+        guardReopen(mw->ui->menu_preferences, settings);
+        mw->ui->menu_preferences->popup(settings->mapToGlobal(QPoint(0, settings->height() + 6)));
+    });
     auto *title = label(QStringLiteral("Rawline"), 18, false, QFont::Bold);
     title->setAlignment(Qt::AlignCenter);
     header->addWidget(m_more);
@@ -1200,13 +1369,15 @@ void NewHome::buildSide(QVBoxLayout *side) {
     m_check->installEventFilter(this);
     m_down = label(QStringLiteral("↓ 0 B/s"), 12, true);
     m_up = label(QStringLiteral("↑ 0 B/s"), 12, true);
+    auto *speeds = new QVBoxLayout;
+    speeds->setSpacing(0);
     for (auto *speed : {m_down, m_up}) {
-        speed->setFixedWidth(84);
+        speed->setFixedWidth(96);
         speed->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        speeds->addWidget(speed);
     }
     status->addWidget(m_check, 1);
-    status->addWidget(m_down);
-    status->addWidget(m_up);
+    status->addLayout(speeds);
     auto *statusBox = new QWidget;
     statusBox->setFixedHeight(40);
     statusBox->setLayout(status);
@@ -1292,7 +1463,7 @@ void NewHome::buildBody(QVBoxLayout *body) {
     action("test", T("Ping test"), [this] { mw->ui->actionUrl_Test_Group->trigger(); });
     // The desktop has a speed test the mobile app lacks: it sits beside the ping test.
     action("speedtest", T("Speed test"), [this] { mw->ui->actionSpeedtest_Group->trigger(); });
-    action("more", T("More"), [this] { showGroupMenu(); });
+    m_groupMore = action("more", T("More"), [this] { showGroupMenu(); });
     serversLayout->addLayout(title);
 
     m_traffic = new QWidget;
@@ -1363,9 +1534,14 @@ void NewHome::buildBody(QVBoxLayout *body) {
     m_list->rowsSwapped = [this](int from, int to) { if (mw->ui->profilesTableView->rowsSwapped) mw->ui->profilesTableView->rowsSwapped(from, to); };
     m_list->toSourceRow = [this](int row) { return mw->profilesFilterModel->toSourceRow(row); };
     m_list->editRequested = [this](const QModelIndex &index) { mw->on_profilesTableView_doubleClicked(index); };
-    connect(m_list, &QListView::doubleClicked, this, [this](const QModelIndex &index) {
-        if (mw->select_mode) mw->on_profilesTableView_doubleClicked(index);
-        else mw->profile_start(index.data(ProfilesTableModel::ProfileIdRole).toInt());
+    // One click starts a server, as on the phone; with a modifier it only chooses rows.
+    connect(m_list, &QListView::clicked, this, [this](const QModelIndex &index) {
+        if (QGuiApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) return;
+        // The chevron's press never reached the view, so its release may report an older press.
+        if (NewProfileDelegate::chevronRect(m_list->visualRect(index)).contains(m_list->viewport()->mapFromGlobal(QCursor::pos()))) return;
+        if (mw->select_mode) { mw->on_profilesTableView_doubleClicked(index); return; }
+        const int id = index.data(ProfilesTableModel::ProfileIdRole).toInt();
+        if (id != m_list->rowDelegate->runningId) mw->profile_start(id);
     });
     connect(m_list, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
         mw->ui->menu_server->popup(m_list->viewport()->mapToGlobal(pos));
@@ -1407,6 +1583,7 @@ void NewHome::attach() {
         }
         return slot;
     };
+    m_titleBar->follow(mw);
     m_dataSlot = find(mw->ui->data_view);
     m_statsSlot = find(mw->ui->stats_widget);
     m_noticeLayout->addWidget(mw->ui->data_view);
@@ -1572,7 +1749,10 @@ void NewHome::refresh() {
     if (m_check->text() != check) m_check->setText(check);
     m_check->setVisible(connected);
 
-    if (m_running->text() != mw->ui->label_running->text()) m_running->setText(mw->ui->label_running->text());
+    const QString runningText = mw->ui->label_running->text();
+    if (!runningText.startsWith(QCoreApplication::translate("MainWindow", "Test Result") + QStringLiteral(": ")) && m_running->text() != runningText) {
+        m_running->setText(runningText);
+    }
     if (m_inbound->text() != mw->ui->label_inbound->text()) m_inbound->setText(mw->ui->label_inbound->text());
     m_inbound->setToolTip(mw->ui->label_inbound->toolTip());
 
@@ -1634,19 +1814,22 @@ void NewHome::showGroupPicker() {
     layout->addWidget(scroll);
     auto *actions = new QHBoxLayout;
     actions->setSpacing(12);
+    int buttonsWidth = 32 + 12;
     for (const auto &[text, action] : {std::pair{T("Add group or subscription"), mw->ui->actionAdd_New_Group},
                                        std::pair{T("Manage groups and subscriptions"), mw->ui->menu_manage_groups}}) {
         auto *button = new NewTile(NewTile::Text);
         button->setText(text);
         button->setFixedHeight(52);
         button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        buttonsWidth += button->sizeHint().width();
         QAction *target = action;
         connect(button, &QAbstractButton::clicked, this, [popup, target] { popup->close(); target->trigger(); });
         actions->addWidget(button, 1);
     }
     layout->addLayout(actions);
-    popup->setFixedWidth(std::max(440, m_chip->width() + 56));
+    popup->setFixedWidth(std::max({440, m_chip->width() + 56, buttonsWidth}));
     popup->adjustSize();
+    guardReopen(popup, m_chip);
     popup->showAt(m_chip->mapToGlobal(QPoint(0, m_chip->height() + 6)));
 }
 
@@ -1666,6 +1849,7 @@ void NewHome::showMoreMenu() {
     menu->addMenu(ui->menu_program);
     menu->addSeparator();
     if (ui->actionCheck_For_Update->isEnabled()) menu->addAction(ui->actionCheck_For_Update);
+    guardReopen(menu, m_more);
     menu->popup(m_more->mapToGlobal(QPoint(0, m_more->height() + 6)));
 }
 
@@ -1679,6 +1863,7 @@ void NewHome::showAddMenu() {
     menu->addAction(ui->menu_scan_qr);
     menu->addSeparator();
     menu->addAction(ui->actionAdd_New_Group);
+    guardReopen(menu, m_add);
     menu->popup(m_add->mapToGlobal(QPoint(0, m_add->height() + 6)));
 }
 
@@ -1718,7 +1903,8 @@ void NewHome::showGroupMenu() {
         menu->addAction(action);
     }
     if (Engine::host()->tests()->isRunning()) menu->addAction(ui->menu_stop_testing);
-    menu->popup(QCursor::pos());
+    guardReopen(menu, m_groupMore);
+    menu->popup(m_groupMore->mapToGlobal(QPoint(m_groupMore->width() - menu->sizeHint().width(), m_groupMore->height() + 2)));
 }
 
 void NewHome::paintEvent(QPaintEvent *) {
@@ -1813,6 +1999,7 @@ void MainWindow::applyInterfaceStyle(bool animated) {
         const bool maximized = isMaximized();
         setWindowFlag(Qt::FramelessWindowHint, frameless);
         if (shown) maximized ? showMaximized() : show();
+        if (frameless) NewStyle::roundCorners(this, false);
     }
     if (cover) {
         cover->raise();

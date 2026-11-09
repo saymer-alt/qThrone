@@ -351,12 +351,12 @@ It stays a preference, not a lock: if that profile stops working the selector st
 <context>
     <name>DialogBasicSettings</name>
     <message>
-        <source>New OLED</source>
-        <translation>Новая OLED</translation>
+        <source>Rawline OLED</source>
+        <translation>Rawline OLED</translation>
     </message>
     <message>
-        <source>New White</source>
-        <translation>Новая Белая</translation>
+        <source>Rawline White</source>
+        <translation>Rawline White</translation>
     </message>
     <message>
         <source>Basic Settings</source>
@@ -3729,6 +3729,10 @@ A domain listed with only one address family is answered NXDOMAIN for the other,
     <message>
         <source>Structured profile</source>
         <translation>Структурированный профиль</translation>
+    </message>
+    <message>
+        <source>Happ / Incy profile</source>
+        <translation>Профиль Happ / Incy</translation>
     </message>
     <message>
         <source>Raw profile</source>

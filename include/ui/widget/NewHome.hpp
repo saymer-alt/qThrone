@@ -51,6 +51,10 @@ namespace NewStyle {
     QPixmap flag(const QString &leading, int size, qreal dpr);
     QString leadingFlag(const QString &name);
 
+    // Fusion with the new style's own check boxes, radio buttons and menu ticks.
+    QStyle *createStyle();
+    // Windows 11's round corners for a window without a frame of its own.
+    void roundCorners(QWidget *window, bool compact);
     // A widget arriving: fades in while it rises into place, as the mobile screens do.
     void rise(QWidget *widget, int distance, int duration);
 }
@@ -143,10 +147,18 @@ private:
 class NewTitleBar : public QWidget {
 public:
     explicit NewTitleBar(QWidget *parent = nullptr);
+    // Shows the window's icon and title, as its own frame would.
+    void follow(QWidget *window);
 
 protected:
     void mousePressEvent(QMouseEvent *) override;
     void mouseDoubleClickEvent(QMouseEvent *) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+private:
+    QLabel *m_icon = nullptr;
+    QLabel *m_title = nullptr;
+    QWidget *m_window = nullptr;
 };
 
 class NewProfileDelegate : public QStyledItemDelegate {
@@ -215,11 +227,13 @@ private:
     struct Slot { QBoxLayout *layout = nullptr; int index = -1; int stretch = 0; };
     Slot m_dataSlot, m_statsSlot;
 
+    NewTitleBar *m_titleBar = nullptr;
     NewOrb *m_orb = nullptr;
     NewTile *m_chip = nullptr;
     NewTile *m_more = nullptr;
     NewTile *m_add = nullptr;
     NewTile *m_refresh = nullptr;
+    NewTile *m_groupMore = nullptr;
     NewTile *m_support = nullptr;
     NewSwitch *m_tun = nullptr;
     NewSwitch *m_proxy = nullptr;
