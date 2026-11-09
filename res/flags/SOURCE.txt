@@ -1,0 +1,5 @@
+flag-icons, square country flags
+https://github.com/lipis/flag-icons
+Commit: 086f7e97d657358203916dbe84f61c2bccaa81eb
+License: MIT (see LICENSE)
+Rendered at 152 x 152 with resvg-py.

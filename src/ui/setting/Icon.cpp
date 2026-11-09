@@ -50,8 +50,9 @@ QIcon Icon::GetTrayIcon(TrayIconStatus status) {
 
     // A custom set without Connecting.png keeps its own Off icon rather than mixing in the bundled one.
     const QString customFallback = status == TrayIconStatus::Connecting ? statusName(TrayIconStatus::None) : QString();
-    QIcon icon = loadNamedIcon(statusName(status), useCustom, customFallback);
-    if (!useCustom || status == TrayIconStatus::Vpn) {
+    // The bundled icon is the app's own square for every status: tinting it painted the whole square one colour.
+    QIcon icon = useCustom ? loadNamedIcon(statusName(status), true, customFallback) : QIcon(QStringLiteral(":/Rawline/Rawline.png"));
+    if (useCustom && status == TrayIconStatus::Vpn) {
         // Preserve the original silhouette, transparency and antialiased edges.
         const QColor color = status == TrayIconStatus::Vpn ? QColor(Qt::white)
             : status == TrayIconStatus::SystemProxy ? QColor("#C4A7F5") : QColor("#A7DFFF");

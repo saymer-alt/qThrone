@@ -30,6 +30,7 @@ class ThemeManager : public QObject {
 public:
     QString system_style_name = "";
     QPalette system_palette;     // snapshot of the OS palette, taken on first apply
+    QString system_font_family;  // the font before the new interface's Geologica
     QString current_theme = "0"; // int: 0:system 1+:builtin string: QStyleFactory
     ThemeTokens tokens;          // rebuilt by every ApplyTheme(), before themeChanged fires
 

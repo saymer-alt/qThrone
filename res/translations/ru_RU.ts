@@ -351,6 +351,14 @@ It stays a preference, not a lock: if that profile stops working the selector st
 <context>
     <name>DialogBasicSettings</name>
     <message>
+        <source>New OLED</source>
+        <translation>Новая OLED</translation>
+    </message>
+    <message>
+        <source>New White</source>
+        <translation>Новая Белая</translation>
+    </message>
+    <message>
         <source>Basic Settings</source>
         <translation>Основные настройки</translation>
     </message>
@@ -14796,6 +14804,183 @@ Remove that endpoint from this routing profile as well?</source>
     <message>
         <source>XDRIVE needs Mux: set it to On or Keep Default.</source>
         <translation>Для XDRIVE нужен Mux: выберите «Вкл.» или «По умолчанию».</translation>
+    </message>
+</context>
+<context>
+    <name>NewHome</name>
+    <message>
+        <source>Click to connect</source>
+        <translation>Нажмите для подключения</translation>
+    </message>
+    <message>
+        <source>Minimize</source>
+        <translation>Свернуть</translation>
+    </message>
+    <message>
+        <source>Maximize</source>
+        <translation>Развернуть</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Закрыть</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Меню</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Настройки</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>Check current
+connection</source>
+        <translation>Проверить текущее
+подключение</translation>
+    </message>
+    <message>
+        <source>TUN mode</source>
+        <translation>Режим TUN</translation>
+    </message>
+    <message>
+        <source>System proxy</source>
+        <translation>Системный прокси</translation>
+    </message>
+    <message>
+        <source>Servers</source>
+        <translation>Серверы</translation>
+    </message>
+    <message>
+        <source>Update subscription</source>
+        <translation>Обновить подписку</translation>
+    </message>
+    <message>
+        <source>Ping test</source>
+        <translation>Проверка пинга</translation>
+    </message>
+    <message>
+        <source>Speed test</source>
+        <translation>Тест скорости</translation>
+    </message>
+    <message>
+        <source>More</source>
+        <translation>Ещё</translation>
+    </message>
+    <message>
+        <source>Subscription page</source>
+        <translation>Страница подписки</translation>
+    </message>
+    <message>
+        <source>Support</source>
+        <translation>Поддержка</translation>
+    </message>
+    <message>
+        <source>Search by name</source>
+        <translation>Поиск по имени</translation>
+    </message>
+    <message>
+        <source>Clipboard</source>
+        <translation>Буфер обмена</translation>
+    </message>
+    <message>
+        <source>QR code</source>
+        <translation>QR-код</translation>
+    </message>
+    <message>
+        <source>Traffic not provided</source>
+        <translation>Трафик не указан</translation>
+    </message>
+    <message>
+        <source>Expiry: %1</source>
+        <translation>Срок действия: %1</translation>
+    </message>
+    <message>
+        <source>To use the app, add a proxy server and/or subscription to the server list.</source>
+        <translation>Чтобы использовать приложение, вам необходимо добавить прокси-сервер и/или подписку в список серверов.</translation>
+    </message>
+    <message>
+        <source>This group has no servers yet.</source>
+        <translation>В этой группе пока нет серверов.</translation>
+    </message>
+    <message>
+        <source>Connecting…</source>
+        <translation>Подключение…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>Выключение…</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>Подключено</translation>
+    </message>
+    <message>
+        <source>Success: %1 ms</source>
+        <translation>Успешно: %1 мс</translation>
+    </message>
+    <message>
+        <source>n/a</source>
+        <translation>н/д</translation>
+    </message>
+    <message>
+        <source>Checking ping</source>
+        <translation>Проверка пинга</translation>
+    </message>
+    <message>
+        <source>Group</source>
+        <translation>Группа</translation>
+    </message>
+    <message>
+        <source>Subscription</source>
+        <translation>Подписка</translation>
+    </message>
+    <message>
+        <source>Add group or subscription</source>
+        <translation>Добавить группу или подписку</translation>
+    </message>
+    <message>
+        <source>Manage groups and subscriptions</source>
+        <translation>Управление группами и подписками</translation>
+    </message>
+    <message>
+        <source>Service mode</source>
+        <translation>Сервисный режим</translation>
+    </message>
+    <message>
+        <source>Sort</source>
+        <translation>Сортировка</translation>
+    </message>
+    <message>
+        <source>By name</source>
+        <translation>По имени</translation>
+    </message>
+    <message>
+        <source>By type</source>
+        <translation>По типу</translation>
+    </message>
+    <message>
+        <source>By address</source>
+        <translation>По адресу</translation>
+    </message>
+    <message>
+        <source>By latency</source>
+        <translation>По задержке</translation>
+    </message>
+    <message>
+        <source>By test result</source>
+        <translation>По результату теста</translation>
+    </message>
+    <message>
+        <source>By traffic</source>
+        <translation>По трафику</translation>
+    </message>
+    <message>
+        <source>Stop sorting</source>
+        <translation>Не сортировать</translation>
     </message>
 </context>
 </TS>

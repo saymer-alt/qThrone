@@ -16,6 +16,8 @@
 #include <cmath>
 
 #include "include/ui/setting/ThemeManager.hpp"
+#include "include/ui/widget/NewHome.hpp"
+#include "include/global/Configs.hpp"
 
 #include <QGlobalStatic>
 
@@ -337,14 +339,33 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
 
     const auto lowerTheme = theme.toLower();
     const auto &palettes = customThemePalettes();
-    const bool leavingCustom = palettes.contains(current_theme.toLower());
+    const bool leavingNew = NewStyle::isTheme(current_theme);
+    const bool enteringNew = NewStyle::isTheme(theme);
+    const bool leavingCustom = palettes.contains(current_theme.toLower()) || leavingNew;
     const bool enteringCustom = palettes.contains(lowerTheme);
+    NewStyle::setTheme(theme);
 
     QString themeSheet;
     bool windows11Tabs = false;
     bool macosPane = false;
 
-    if (enteringCustom) {
+    if (enteringNew) {
+        // The new interface draws itself; Fusion follows its palette and sheet everywhere else.
+        qApp->setStyleSheet("");
+        qApp->setStyle("Fusion");
+        qApp->setPalette(NewStyle::palette());
+        themeSheet = NewStyle::styleSheet();
+        if (!leavingNew) system_font_family = qApp->font().family();
+        if (Configs::dataManager->settingsRepo->font.isEmpty()) {
+            auto font = qApp->font();
+            font.setFamily(NewStyle::fontFamily());
+            qApp->setFont(font);
+        }
+    } else if (enteringCustom) {
+        if (leavingNew) {
+            qApp->setStyleSheet("");
+            qApp->setStyle(system_style_name);
+        }
         // The whole palette goes on first, or a colour role leaks from Qt or the previous theme.
         qApp->setPalette(palettes.value(lowerTheme));
         themeSheet = lowerTheme == "qdarkstyle" ? ReadFileText(":/qdarkstyle/dark/darkstyle.qss")
@@ -360,6 +381,12 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
         qApp->setStyle(styleName);
         windows11Tabs = styleName.compare(QStringLiteral("windows11"), Qt::CaseInsensitive) == 0;
         macosPane = styleName.compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
+    }
+
+    if (leavingNew && !enteringNew && !system_font_family.isEmpty() && Configs::dataManager->settingsRepo->font.isEmpty()) {
+        auto font = qApp->font();
+        font.setFamily(system_font_family);
+        qApp->setFont(font);
     }
 
     // After setStyle(), which reinstalls the style's palette. Setting the sheet last is also

@@ -3,6 +3,7 @@
 #include "include/ui/widget/json/JsonEditorDialog.h"
 #include "include/ui/widget/json/SchemaStore.h"
 #include "include/ui/setting/ThemeManager.hpp"
+#include "include/ui/widget/NewHome.hpp"
 #include "include/ui/setting/Icon.hpp"
 #include "include/ui/utils/GuiUtils.hpp"
 #include "include/global/Configs.hpp"
@@ -363,6 +364,9 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->theme->addItem("QDarkStyle");
     // Custom stylesheet themes, not QStyleFactory keys.
     ui->theme->addItems({"FlatGray", "LightBlue", "SoftPink", "BlackSoft"});
+    // The new interface: the mobile app's look, in its two themes.
+    ui->theme->addItem(tr("New OLED"), QString::fromLatin1(NewStyle::OledTheme));
+    ui->theme->addItem(tr("New White"), QString::fromLatin1(NewStyle::WhiteTheme));
     ui->enable_custom_icon->setChecked(Configs::dataManager->settingsRepo->use_custom_icons);
     ui->follow_status_in_taskbar->setChecked(Configs::dataManager->settingsRepo->follow_status_in_taskbar);
     ui->follow_status_in_taskbar->setEnabled(ui->enable_custom_icon->isChecked());
@@ -403,12 +407,20 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     auto themeId = Configs::dataManager->settingsRepo->theme.toInt(&ok);
     if (ok) {
         ui->theme->setCurrentIndex(themeId);
+    } else if (NewStyle::isTheme(Configs::dataManager->settingsRepo->theme)) {
+        ui->theme->setCurrentIndex(ui->theme->findData(Configs::dataManager->settingsRepo->theme));
     } else {
         ui->theme->setCurrentText(Configs::dataManager->settingsRepo->theme);
     }
+    // The new interface has no seasonal decoration.
+    const auto syncDecoration = [this] { ui->seasonal_decoration->setEnabled(!NewStyle::isTheme(ui->theme->currentData().toString())); };
+    syncDecoration();
     connect(ui->theme, &QComboBox::currentIndexChanged, this, [=,this](int index) {
-        themeManager()->ApplyTheme(ui->theme->currentText());
-        Configs::dataManager->settingsRepo->theme = ui->theme->currentText().trimmed();
+        // A new-interface item carries its key; the rest are named by their text.
+        const QString theme = ui->theme->currentData().isValid() ? ui->theme->currentData().toString() : ui->theme->currentText().trimmed();
+        syncDecoration();
+        themeManager()->ApplyTheme(theme);
+        Configs::dataManager->settingsRepo->theme = theme;
         Configs::dataManager->settingsRepo->Save();
         refreshUrlSchemeStatus();
     });
