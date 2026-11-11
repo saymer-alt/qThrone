@@ -48,8 +48,8 @@ bool freeturn::ParseFromJson(const QJsonObject &o) {
     server_port = o["server_port"].toInt(56000);
     provider = o["provider"].toString("vk");
     links = o["links"].toString().trimmed();
-    // A link without a call takes one from the account: the call is each client's own, the server's link never holds it.
-    hashSource = o["hash_source"].toString(links.isEmpty() && provider != "direct" ? "auto" : "manual");
+    // Manual unless chosen otherwise, as for the other relay protocols.
+    hashSource = o["hash_source"].toString("manual");
     threads = o["threads"].toInt(12);
     streamsPerCred = o["streams_per_cred"].toInt(12);
     relayTransport = o["relay_transport"].toString("tcp");

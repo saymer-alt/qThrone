@@ -1,6 +1,8 @@
 #include "include/ui/profile/edit_freeturn.h"
 #include "include/configs/outbounds/freeturn.h"
 #include <QFormLayout>
+#include <QStandardItemModel>
+#include "include/global/Configs.hpp"
 namespace {
 QComboBox *combo(QWidget *parent, const QList<QPair<QString, QString>> &items) {
     auto *box = new QComboBox(parent);
@@ -10,15 +12,16 @@ QComboBox *combo(QWidget *parent, const QList<QPair<QString, QString>> &items) {
 void pick(QComboBox *box, const QString &value) { if (const int index = box->findData(value); index >= 0) box->setCurrentIndex(index); }
 }
 EditFreeTurn::EditFreeTurn(QWidget *parent) : QWidget(parent) {
-    auto *form = new QFormLayout(this);
+    form = new QFormLayout(this);
     provider = combo(this, {{"vk", QStringLiteral("Через TURN звонка VK")}, {"direct", QStringLiteral("Напрямую к серверу")}});
-    hashSource = combo(this, {{"manual", QStringLiteral("Свои ссылки")}, {"auto", QStringLiteral("Создать из аккаунта VK")}});
+    hashSource = combo(this, {{"manual", QStringLiteral("Вручную")}, {"auto", QStringLiteral("Созданные в клиенте")}});
+    // As for qWDTT: calls made in the client need a linked VK account.
+    qobject_cast<QStandardItemModel *>(hashSource->model())->item(1)->setEnabled(Configs::dataManager->settingsRepo->vk_relay_linked);
     tunnelMode = combo(this, {{"udp", QStringLiteral("UDP: встроенный WireGuard")}, {"tcp", QStringLiteral("TCP: первое звено цепочки")}});
     tunnelMode->setToolTip(QStringLiteral("В режиме TCP сервер пересылает потоки своему Xray: поставьте этот профиль первым звеном цепочки перед профилем VLESS и т.п."));
     relayTransport = combo(this, {{"tcp", "TCP/TLS"}, {"udp", "UDP"}});
     obfProfile = combo(this, {{"none", QStringLiteral("Нет")}, {"rtpopus3", "rtpopus3"}, {"rtpopus2", "rtpopus2"}, {"rtpopus", "rtpopus"}});
     dnsMode = combo(this, {{"auto", QStringLiteral("Автоматически")}, {"plain", "UDP/53"}, {"doh", "DNS-over-HTTPS"}});
-    links = new QPlainTextEdit(this); links->setMaximumHeight(70); links->setPlaceholderText(QStringLiteral("Одна ссылка на звонок в строке"));
     wgConfig = new QPlainTextEdit(this); wgConfig->setMinimumHeight(110); wgConfig->setPlaceholderText("[Interface]\nPrivateKey = ...\n\n[Peer]\nPublicKey = ...");
     obfKey = new QLineEdit(this); clientId = new QLineEdit(this); dnsServers = new QLineEdit(this); turnHost = new QLineEdit(this);
     clientId->setPlaceholderText(QStringLiteral("Создаётся автоматически"));
@@ -28,8 +31,8 @@ EditFreeTurn::EditFreeTurn(QWidget *parent) : QWidget(parent) {
     bond = new QCheckBox(QStringLiteral("Объединять сессии (bond)"), this);
     manualCaptcha = new QCheckBox(QStringLiteral("Ручная капча"), this);
     form->addRow(QStringLiteral("Источник потоков"), provider);
-    form->addRow(QStringLiteral("Звонок VK"), hashSource);
-    form->addRow(QStringLiteral("Ссылки на звонки VK"), links);
+    form->addRow(QStringLiteral("Источник хешей"), hashSource);
+    setHashCount(6);
     form->addRow(QStringLiteral("Конфигурация WireGuard или AmneziaWG (пусто: свой VPN-профиль в цепочке)"), wgConfig);
     form->addRow(QStringLiteral("Режим"), tunnelMode);
     form->addRow(bond);
@@ -44,11 +47,35 @@ EditFreeTurn::EditFreeTurn(QWidget *parent) : QWidget(parent) {
     form->addRow(QStringLiteral("DNS-серверы клиента"), dnsServers);
     form->addRow(QStringLiteral("TURN-сервер (необязательно)"), turnHost);
     form->addRow(manualCaptcha);
+    connect(hashSource, &QComboBox::currentIndexChanged, this, [this] { updateSource(); });
+    connect(provider, &QComboBox::currentIndexChanged, this, [this] { updateSource(); });
+    updateSource();
+}
+void EditFreeTurn::setHashCount(int count) {
+    while (hashes.size() < count) {
+        auto *field = new QLineEdit(this);
+        field->setPlaceholderText(QStringLiteral("Хеш звонка или ссылка на звонок VK"));
+        // After the last field already there, so a longer list keeps its order.
+        int row = 2;
+        if (!hashes.isEmpty()) { QFormLayout::ItemRole role; form->getWidgetPosition(hashes.last(), &row, &role); ++row; }
+        form->insertRow(row, QStringLiteral("Хеш VK %1").arg(hashes.size() + 1), field);
+        hashes << field;
+    }
+}
+void EditFreeTurn::updateSource() {
+    const bool calls = provider->currentData() != "direct";
+    const bool manual = hashSource->currentData() != "auto";
+    form->setRowVisible(hashSource, calls);
+    for (auto *field : hashes) form->setRowVisible(field, calls && manual);
 }
 void EditFreeTurn::onStart(std::shared_ptr<Configs::Profile> profile) {
     ent = std::move(profile); const auto *o = dynamic_cast<Configs::freeturn *>(ent->outbound.get()); if (!o) return;
     pick(hashSource, o->hashSource); pick(provider, o->provider); pick(tunnelMode, o->tunnelMode); pick(relayTransport, o->relayTransport); pick(obfProfile, o->obfProfile); pick(dnsMode, o->dnsMode);
-    links->setPlainText(o->links); wgConfig->setPlainText(o->wgConfig); obfKey->setText(o->obfKey); clientId->setText(o->clientId);
+    const auto calls = QString(o->links).replace(',', '\n').split('\n', Qt::SkipEmptyParts);
+    setHashCount(std::max<qsizetype>(6, calls.size()));
+    for (int i = 0; i < hashes.size(); ++i) hashes[i]->setText(i < calls.size() ? calls[i].trimmed() : QString());
+    updateSource();
+    wgConfig->setPlainText(o->wgConfig); obfKey->setText(o->obfKey); clientId->setText(o->clientId);
     dnsServers->setText(o->dnsServers); turnHost->setText(o->turnHost); threads->setValue(o->threads); streamsPerCred->setValue(o->streamsPerCred);
     obfTiming->setValue(o->obfTiming); bond->setChecked(o->bond); manualCaptcha->setChecked(o->manualCaptcha);
 }
@@ -56,7 +83,9 @@ bool EditFreeTurn::onEnd() {
     auto *o = dynamic_cast<Configs::freeturn *>(ent->outbound.get()); if (!o) return false;
     o->hashSource = hashSource->currentData().toString(); o->provider = provider->currentData().toString(); o->tunnelMode = tunnelMode->currentData().toString();
     o->relayTransport = relayTransport->currentData().toString(); o->obfProfile = obfProfile->currentData().toString(); o->dnsMode = dnsMode->currentData().toString();
-    o->links = links->toPlainText().trimmed(); o->wgConfig = wgConfig->toPlainText().trimmed(); o->obfKey = obfKey->text().trimmed(); o->clientId = clientId->text().trimmed();
+    QStringList calls;
+    for (auto *field : hashes) if (const auto text = field->text().trimmed(); !text.isEmpty()) calls << text;
+    o->links = calls.join('\n'); o->wgConfig = wgConfig->toPlainText().trimmed(); o->obfKey = obfKey->text().trimmed(); o->clientId = clientId->text().trimmed();
     o->dnsServers = dnsServers->text().trimmed(); o->turnHost = turnHost->text().trimmed(); o->threads = threads->value(); o->streamsPerCred = streamsPerCred->value();
     o->obfTiming = obfTiming->value(); o->bond = bond->isChecked(); o->manualCaptcha = manualCaptcha->isChecked();
     if (const auto error = o->Validate(); !error.isEmpty()) { MessageBoxWarning("FreeTurn", error); return false; }

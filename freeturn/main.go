@@ -193,7 +193,7 @@ func main() {
 	cfg.ClientID = id
 
 	var vn *virtualNet
-	deps := session.Deps{Logger: logger, Solver: manualSolver(), Options: session.Options{Traffic: true}}
+	deps := session.Deps{Logger: logger, Solver: manualSolver(), PowCapture: powCapture(), CaptchaActive: captchaActive.Load, Options: session.Options{Traffic: true}}
 	closeTunnel := func() {}
 	if cfg.Tunnel.Enabled() {
 		var relaySide net.PacketConn
@@ -256,8 +256,27 @@ func manualSolver() vk.ManualSolverFunc {
 		return vk.DefaultManualSolver
 	}
 	return vk.ProxyManualSolver(func(url string) {
+		captchaActive.Store(true)
 		fmt.Printf("CAPTCHA_SOLVE|manual|%s|freeturn\n", url)
-	}, func() {
-		fmt.Println("CAPTCHA_DONE")
-	})
+	}, hideCaptcha)
+}
+
+// captchaActive tells the session a check is on screen, as the original app does, so it waits for it.
+var captchaActive atomic.Bool
+
+func hideCaptcha() {
+	captchaActive.Store(false)
+	fmt.Println("CAPTCHA_DONE")
+}
+
+// powCapture is the original app's automatic check: its page in an unseen WebView solves the proof of work, which
+// VK accepts where the legacy solver is answered BOT. Elsewhere, as the original desktop client, the legacy solver.
+func powCapture() vk.PowCaptureFunc {
+	if runtime.GOOS != "android" {
+		return nil
+	}
+	return vk.ProxyPowCapture(func(url string) {
+		captchaActive.Store(true)
+		fmt.Printf("CAPTCHA_SOLVE|auto|%s|freeturn\n", url)
+	}, hideCaptcha)
 }
