@@ -32,7 +32,8 @@ namespace {
                 if (const auto custom = QPixmap(QStringLiteral("icons/") + candidate + QStringLiteral(".png")); !custom.isNull()) return QIcon(custom);
             }
         }
-        return QIcon(QStringLiteral(":/Rawline/") + name + QStringLiteral(".png"));
+        // Without the user's own file the app's square stands for every status, never a bare letter.
+        return {};
     }
 } // namespace
 
@@ -51,8 +52,10 @@ QIcon Icon::GetTrayIcon(TrayIconStatus status) {
     // A custom set without Connecting.png keeps its own Off icon rather than mixing in the bundled one.
     const QString customFallback = status == TrayIconStatus::Connecting ? statusName(TrayIconStatus::None) : QString();
     // The bundled icon is the app's own square for every status: tinting it painted the whole square one colour.
-    QIcon icon = useCustom ? loadNamedIcon(statusName(status), true, customFallback) : QIcon(QStringLiteral(":/Rawline/Rawline.png"));
-    if (useCustom && status == TrayIconStatus::Vpn) {
+    QIcon icon = useCustom ? loadNamedIcon(statusName(status), true, customFallback) : QIcon();
+    const bool own = !icon.isNull();
+    if (!own) icon = QIcon(QStringLiteral(":/Rawline/Rawline.png"));
+    if (own && status == TrayIconStatus::Vpn) {
         // Preserve the original silhouette, transparency and antialiased edges.
         const QColor color = status == TrayIconStatus::Vpn ? QColor(Qt::white)
             : status == TrayIconStatus::SystemProxy ? QColor("#C4A7F5") : QColor("#A7DFFF");
