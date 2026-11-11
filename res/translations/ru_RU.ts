@@ -10043,6 +10043,14 @@ Name: %1</source>
 <context>
     <name>QObject</name>
     <message>
+        <source>%1 was removed by the update and stays stopped: no single profile with the same name replaces it.</source>
+        <translation>%1 удалён обновлением и остаётся остановленным: нет единственного профиля с тем же именем на замену.</translation>
+    </message>
+    <message>
+        <source>%1 was replaced by the update; connecting to the profile with the same name.</source>
+        <translation>%1 заменён обновлением; подключение к профилю с тем же именем.</translation>
+    </message>
+    <message>
         <source>The server returned a web page; requesting the subscription again as another client.</source>
         <translation>Сервер вернул веб-страницу; подписка запрашивается снова от имени другого клиента.</translation>
     </message>
