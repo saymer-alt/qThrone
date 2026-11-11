@@ -1323,6 +1323,28 @@ Rawline will restart to complete the restore.</source>
 <context>
     <name>DialogEditGroupAdvanced</name>
     <message>
+        <source>Keep only matching names</source>
+        <translation>Только совпадающие имена</translation>
+    </message>
+    <message>
+        <source>Remove matching names</source>
+        <translation>Удалять совпадающие имена</translation>
+    </message>
+    <message>
+        <source>Optional case-insensitive regular expression. On every update only the profiles whose name matches are kept, e.g. HK|SG|Japan.</source>
+        <translation>Необязательное регулярное выражение без учёта регистра. При каждом обновлении сохраняются только профили с совпадающим именем, напр. HK|SG|Japan.</translation>
+    </message>
+    <message>
+        <source>Optional case-insensitive regular expression. On every update the profiles whose name matches are removed, e.g. expire|traffic|website.</source>
+        <translation>Необязательное регулярное выражение без учёта регистра. При каждом обновлении профили с совпадающим именем удаляются, напр. expire|traffic|website.</translation>
+    </message>
+    <message>
+        <source>%1: invalid regular expression.
+%2</source>
+        <translation>%1: недопустимое регулярное выражение.
+%2</translation>
+    </message>
+    <message>
         <source>Advanced Group Settings</source>
         <translation>Доп. настройки группы</translation>
     </message>
@@ -10084,6 +10106,10 @@ How to update?</source>
     <message>
         <source>Processing subscription data...</source>
         <translation>Идёт обработка данных подписки...</translation>
+    </message>
+    <message>
+        <source>Removed %1 profiles by the name filter:</source>
+        <translation>Удалено профилей по фильтру имён: %1</translation>
     </message>
     <message>
         <source>Removed %1 duplicate profiles:</source>

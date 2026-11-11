@@ -395,7 +395,8 @@ namespace Subscription {
 
         // Each profile is listed under the first enabled action that claims it.
         DeleteOutcome removeFlagged(const QList<int> &ids, const Configs::SubscriptionOptions &options, QString &report) {
-            if (!options.remove_duplicates && !options.remove_insecure && !options.remove_invalid) return {true, {}, {}};
+            if (!options.remove_duplicates && !options.remove_insecure && !options.remove_invalid && options.name_include.isEmpty() &&
+                options.name_exclude.isEmpty()) return {true, {}, {}};
             QList<std::shared_ptr<Configs::Profile>> profiles;
             forEachProfile(ids, [&profiles](const std::shared_ptr<Configs::Profile> &ent) { profiles << ent; });
 
@@ -413,6 +414,18 @@ namespace Subscription {
                 if (!names.isEmpty()) sections += "\n" + heading.arg(names.size()) + "\n" + notice(names, "[-]", "removed");
             };
 
+            // The name filters first: an invalid pattern filters nothing, as the dialog refuses to save one.
+            const auto pattern = [](const QString &text) {
+                QRegularExpression re(text, QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+                return text.isEmpty() || !re.isValid() ? QRegularExpression() : re;
+            };
+            const auto include = pattern(options.name_include), exclude = pattern(options.name_exclude);
+            if (!include.pattern().isEmpty() || !exclude.pattern().isEmpty()) {
+                collect(QObject::tr("Removed %1 profiles by the name filter:"), [&include, &exclude](const std::shared_ptr<Configs::Profile> &ent) {
+                    const QString name = ent->outbound->name;
+                    return (!include.pattern().isEmpty() && !include.match(name).hasMatch()) || (!exclude.pattern().isEmpty() && exclude.match(name).hasMatch());
+                });
+            }
             if (options.remove_duplicates) {
                 QList<std::shared_ptr<Configs::Profile>> uniq;
                 Configs::ProfileFilter::Uniq(profiles, uniq, false);

@@ -110,6 +110,9 @@ namespace Configs
         bool remove_duplicates = false;
         bool remove_insecure = false;
         bool remove_invalid = false;
+        // Case-insensitive patterns applied on every update, as the mobile app's: keep only matching names, drop matching names.
+        QString name_include;
+        QString name_exclude;
         bool url_test = false;
         // Follow-ups of url_test: ignored while it is off.
         bool remove_unavailable = false;

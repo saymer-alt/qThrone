@@ -89,6 +89,8 @@ namespace Configs
         if (remove_duplicates) json["remove_duplicates"] = true;
         if (remove_insecure) json["remove_insecure"] = true;
         if (remove_invalid) json["remove_invalid"] = true;
+        if (!name_include.isEmpty()) json["name_include"] = name_include;
+        if (!name_exclude.isEmpty()) json["name_exclude"] = name_exclude;
         if (url_test) json["url_test"] = true;
         if (remove_unavailable) json["remove_unavailable"] = true;
         if (sort_by_latency) json["sort_by_latency"] = true;
@@ -125,6 +127,8 @@ namespace Configs
         options.remove_duplicates = json["remove_duplicates"].toBool();
         options.remove_insecure = json["remove_insecure"].toBool();
         options.remove_invalid = json["remove_invalid"].toBool();
+        options.name_include = json["name_include"].toString();
+        options.name_exclude = json["name_exclude"].toString();
         options.url_test = json["url_test"].toBool();
         options.remove_unavailable = json["remove_unavailable"].toBool();
         options.sort_by_latency = json["sort_by_latency"].toBool();

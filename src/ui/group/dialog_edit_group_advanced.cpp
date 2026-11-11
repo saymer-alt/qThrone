@@ -12,6 +12,8 @@
 
 #include <QGuiApplication>
 #include <QHostAddress>
+#include <QBoxLayout>
+#include <QLineEdit>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QSslSocket>
@@ -103,6 +105,19 @@ DialogEditGroupAdvanced::DialogEditGroupAdvanced(const Configs::SubscriptionOpti
     ui->remove_duplicates->setChecked(options.remove_duplicates);
     ui->remove_insecure->setChecked(options.remove_insecure);
     ui->remove_invalid->setChecked(options.remove_invalid);
+    // The name filters of the mobile app, under the clean-up options they belong with.
+    if (auto *box = qobject_cast<QBoxLayout *>(ui->remove_invalid->parentWidget()->layout())) {
+        int at = box->indexOf(ui->remove_invalid) + 1;
+        for (const auto &[key, title, tip, value] : {
+                 std::tuple{"name_include", tr("Keep only matching names"), tr("Optional case-insensitive regular expression. On every update only the profiles whose name matches are kept, e.g. HK|SG|Japan."), options.name_include},
+                 std::tuple{"name_exclude", tr("Remove matching names"), tr("Optional case-insensitive regular expression. On every update the profiles whose name matches are removed, e.g. expire|traffic|website."), options.name_exclude}}) {
+            auto *field = new QLineEdit(value, ui->remove_invalid->parentWidget());
+            field->setObjectName(QLatin1String(key));
+            field->setPlaceholderText(title);
+            field->setToolTip(tip);
+            box->insertWidget(at++, field);
+        }
+    }
     ui->url_test->setChecked(options.url_test);
     ui->remove_unavailable->setChecked(options.remove_unavailable);
     ui->sort_by_latency->setChecked(options.sort_by_latency);
@@ -233,6 +248,16 @@ void DialogEditGroupAdvanced::accept() {
     options.remove_duplicates = ui->remove_duplicates->isChecked();
     options.remove_insecure = ui->remove_insecure->isChecked();
     options.remove_invalid = ui->remove_invalid->isChecked();
+    for (auto *target : {&options.name_include, &options.name_exclude}) {
+        const auto *field = findChild<QLineEdit *>(target == &options.name_include ? QStringLiteral("name_include") : QStringLiteral("name_exclude"));
+        if (!field) continue;
+        const QString text = field->text().trimmed();
+        if (const QRegularExpression re(text); !re.isValid()) {
+            MessageBoxWarning(windowTitle(), tr("%1: invalid regular expression.\n%2").arg(field->placeholderText(), re.errorString()));
+            return;
+        }
+        *target = text;
+    }
     options.url_test = ui->url_test->isChecked();
     options.remove_unavailable = ui->remove_unavailable->isChecked();
     options.sort_by_latency = ui->sort_by_latency->isChecked();
