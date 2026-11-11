@@ -142,12 +142,7 @@ namespace Engine {
                 break;
             }
             // Servers the update added: a balancer has to take them into its rotation, not only replace lost ones.
-            if (!rebuild) {
-                const auto plan = Configs::PlanAutoSelector(ent);
-                const QSet<int> planned(plan.build.begin(), plan.build.end());
-                const QSet<int> built(selector->lastBuilt.begin(), selector->lastBuilt.end());
-                rebuild = plan.error.isEmpty() && !planned.isEmpty() && planned != built;
-            }
+            if (!rebuild) rebuild = Configs::AutoSelectorBuildChanged(ent);
             if (rebuild) restartID = ent->id;
         }
 

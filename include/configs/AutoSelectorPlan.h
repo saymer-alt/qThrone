@@ -68,5 +68,8 @@ namespace Configs
     QList<int> AutoSelectorUnmeasuredCandidates(const std::shared_ptr<Profile> &ent,
                                                 const QList<int> &stale = {});
 
+    // Whether the build the plan takes now would drop a member of lastBuilt or add one that works.
+    bool AutoSelectorBuildChanged(const std::shared_ptr<Profile> &ent);
+
     QList<int> RerankAutoSelectorPool(const std::shared_ptr<Profile> &ent);
 }
