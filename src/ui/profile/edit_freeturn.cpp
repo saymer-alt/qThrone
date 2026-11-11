@@ -65,8 +65,13 @@ void EditFreeTurn::setHashCount(int count) {
 void EditFreeTurn::updateSource() {
     const bool calls = provider->currentData() != "direct";
     const bool manual = hashSource->currentData() != "auto";
-    form->setRowVisible(hashSource, calls);
-    for (auto *field : hashes) form->setRowVisible(field, calls && manual);
+    // QFormLayout::setRowVisible needs Qt 6.4; the legacy builds use 6.2.
+    const auto show = [this](QWidget *field, bool on) {
+        field->setVisible(on);
+        if (auto *label = form->labelForField(field)) label->setVisible(on);
+    };
+    show(hashSource, calls);
+    for (auto *field : hashes) show(field, calls && manual);
 }
 void EditFreeTurn::onStart(std::shared_ptr<Configs::Profile> profile) {
     ent = std::move(profile); const auto *o = dynamic_cast<Configs::freeturn *>(ent->outbound.get()); if (!o) return;
