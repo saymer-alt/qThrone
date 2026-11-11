@@ -133,6 +133,8 @@ bool csqtt::ParseFromLink(const QString &link) {
             object["hash_source"] = "auto_js";
             object["vk_anon_path"] = "auto_js";
         }
+        // An empty "hashes=" is a link without calls: the hashes are added in the client.
+        if (values.contains("hashes") && values["hashes"].trimmed().isEmpty()) values.remove("hashes");
         if (values.contains("hashes")) {
             QStringList list;
             const auto encodedHashes = values["hashes"].split('+').mid(0,6);
