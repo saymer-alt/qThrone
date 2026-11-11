@@ -313,7 +313,9 @@ func (c *devTools) evaluate(expression string) (string, error) {
 	return r.Result.Value, e
 }
 func browserPath() string {
-	names := []string{"msedge", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "brave-browser"}
+	// Package names differ by distribution: Arch's Brave is "brave", Debian's "brave-browser".
+	names := []string{"msedge", "microsoft-edge", "microsoft-edge-stable", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+		"chrome", "brave", "brave-browser", "brave-browser-stable", "yandex-browser", "yandex-browser-stable", "vivaldi", "vivaldi-stable"}
 	for _, name := range names {
 		if path, e := exec.LookPath(name); e == nil {
 			return path
@@ -344,7 +346,25 @@ func browserPath() string {
 		}
 	}
 	if runtime.GOOS == "darwin" {
-		paths = append(paths, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Chromium.app/Contents/MacOS/Chromium")
+		paths = append(paths, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+			"/Applications/Yandex.app/Contents/MacOS/Yandex")
+	}
+	if runtime.GOOS == "linux" {
+		// A privileged core may run with a short PATH, so the usual install places are named too.
+		for _, dir := range []string{"/usr/bin", "/usr/local/bin", "/snap/bin"} {
+			for _, name := range names {
+				paths = append(paths, filepath.Join(dir, name))
+			}
+		}
+		paths = append(paths, "/opt/brave-bin/brave", "/opt/brave.com/brave/brave", "/opt/google/chrome/chrome", "/opt/microsoft/msedge/msedge",
+			"/opt/yandex/browser/yandex-browser", "/var/lib/flatpak/exports/bin/com.brave.Browser", "/var/lib/flatpak/exports/bin/com.google.Chrome",
+			"/var/lib/flatpak/exports/bin/org.chromium.Chromium")
+		if home, e := os.UserHomeDir(); e == nil {
+			for _, app := range []string{"com.brave.Browser", "com.google.Chrome", "org.chromium.Chromium"} {
+				paths = append(paths, filepath.Join(home, ".local/share/flatpak/exports/bin", app))
+			}
+		}
 	}
 	for _, path := range paths {
 		if stat, e := os.Stat(path); e == nil && !stat.IsDir() {
@@ -358,7 +378,7 @@ func (p *protocol) login(r Request) error {
 	previous, _ := readAccount()
 	path := browserPath()
 	if path == "" {
-		return fmt.Errorf("Браузер для входа в VK не найден: нужен Chrome, Edge, Chromium, Brave или Яндекс Браузер")
+		return fmt.Errorf("Браузер для входа в VK не найден")
 	}
 	// A private, temporary profile avoids reading the user's existing browser sessions.
 	dir, e := os.MkdirTemp("", "rawline-vk-")

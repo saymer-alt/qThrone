@@ -117,7 +117,7 @@ func maxInfo() (map[string]any, error) {
 func (p *protocol) maxLogin(r Request) error {
 	path := browserPath()
 	if path == "" {
-		return fmt.Errorf("Браузер для входа в MAX не найден: нужен Chrome, Edge, Chromium, Brave или Яндекс Браузер")
+		return fmt.Errorf("Браузер для входа в MAX не найден")
 	}
 	required := strings.TrimSpace(r.ID)
 	if required != "" && !maxGroupID.MatchString(required) {
