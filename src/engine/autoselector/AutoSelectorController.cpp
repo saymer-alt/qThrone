@@ -141,11 +141,18 @@ namespace Engine {
                 rebuild = true;
                 break;
             }
+            // Servers the update added: a balancer has to take them into its rotation, not only replace lost ones.
+            if (!rebuild) {
+                const auto plan = Configs::PlanAutoSelector(ent);
+                const QSet<int> planned(plan.build.begin(), plan.build.end());
+                const QSet<int> built(selector->lastBuilt.begin(), selector->lastBuilt.end());
+                rebuild = plan.error.isEmpty() && !planned.isEmpty() && planned != built;
+            }
             if (rebuild) restartID = ent->id;
         }
 
         if (restartID < 0) return;
-        MW_show_log(MainWindowTr::tr("[Auto selector] The subscription replaced profiles it was running on — rebuilding."));
+        MW_show_log(MainWindowTr::tr("[Auto selector] The subscription changed the profiles it runs on — rebuilding."));
         control_->start(StartRequest{restartID});
     }
 

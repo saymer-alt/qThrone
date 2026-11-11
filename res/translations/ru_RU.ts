@@ -9652,8 +9652,8 @@ Name: %1</source>
         <translation>[Автовыбор] Ранжировано профилей: %1.</translation>
     </message>
     <message>
-        <source>[Auto selector] The subscription replaced profiles it was running on — rebuilding.</source>
-        <translation>[Автовыбор] Подписка заменила используемые профили — пересборка.</translation>
+        <source>[Auto selector] The subscription changed the profiles it runs on — rebuilding.</source>
+        <translation>[Автовыбор] Подписка изменила используемые профили, пересборка.</translation>
     </message>
     <message>
         <source>[Auto selector] Every running profile stopped working — rebuilding from the next best candidates.</source>
