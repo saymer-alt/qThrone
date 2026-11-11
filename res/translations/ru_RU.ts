@@ -5332,6 +5332,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
 <context>
     <name>EditAutoSelector</name>
     <message>
+        <source>The rest will be measured as the selector starts: it runs as soon as enough profiles work, and switches to the full ranking once all are measured.</source>
+        <translation>Остальные профили будут измерены при запуске: автовыбор заработает, как только наберётся достаточно рабочих профилей, и перейдёт на полный рейтинг, когда измерены все.</translation>
+    </message>
+    <message>
         <source>e.g. DE,NL,FR or !RU</source>
         <translation>напр. DE,NL,FR или !RU</translation>
     </message>
@@ -5666,10 +5670,6 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     <message>
         <source>%1 have a recent test result that will be reused.</source>
         <translation>Профилей с недавним результатом теста (он будет использован повторно): %1.</translation>
-    </message>
-    <message>
-        <source>The rest will be measured before the selector starts.</source>
-        <translation>Остальные профили будут измерены до запуска автовыбора.</translation>
     </message>
 </context>
 <context>
@@ -8487,6 +8487,14 @@ Improves hole-punching reliability. Requires IPv4.</source>
 </context>
 <context>
     <name>MainWindow</name>
+    <message>
+        <source>[Auto selector] %1 working profiles found; starting now while the remaining %2 are still being measured.</source>
+        <translation>[Автовыбор] Найдено рабочих профилей: %1; запуск сейчас, остальные (%2) ещё измеряются.</translation>
+    </message>
+    <message>
+        <source>[Auto selector] Every profile is measured and the best ones changed — rebuilding with the full ranking.</source>
+        <translation>[Автовыбор] Все профили измерены, и лучшие изменились — пересборка по полному рейтингу.</translation>
+    </message>
     <message>
         <source>Password of the SlipNet bundle</source>
         <translation>Пароль пакета SlipNet</translation>

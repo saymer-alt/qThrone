@@ -218,7 +218,7 @@ void TestRunner::applyIpResult(const std::shared_ptr<Configs::Profile>& ent, con
 }
 
 // The core buffers each finished result of a shared test box; show it as soon as it arrives.
-void TestRunner::pollUrlStream() {
+void TestRunner::pollUrlStream(const ResultHook& onResult) {
     bool ok = false;
     const auto resp = API::defaultClient->QueryURLTest(&ok);
     if (!ok) return;
@@ -236,6 +236,7 @@ void TestRunner::pollUrlStream() {
         auto ent = Configs::dataManager->profilesRepo->GetProfile(entid);
         if (ent == nullptr) continue;
         applyUrlResult(ent, res);
+        if (onResult) onResult(ent);
         observer_->testProgressed();
         updated << entid;
     }
@@ -277,7 +278,7 @@ void TestRunner::runUrlProbe(const Target& target) {
     }
     {
         std::unique_ptr<TestRunnerResultPoller> poller;
-        if (streaming) poller = std::make_unique<TestRunnerResultPoller>([this] { pollUrlStream(); }, kTestRunnerLatencyPollIntervalMs);
+        if (streaming) poller = std::make_unique<TestRunnerResultPoller>([this, onResult = target.onResult] { pollUrlStream(onResult); }, kTestRunnerLatencyPollIntervalMs);
         result = API::defaultClient->Test(&rpcOK, req, &coreError, testRunnerBatchRpcTimeoutMs(target.outboundTags.size(), 2) + (target.qwdttConfig.isEmpty() ? 0 : kTestRunnerNativeRpcSlackMs));
     }
     // What the stream already showed; a late poll tick finds the tags gone and drops its copy.
@@ -300,6 +301,7 @@ void TestRunner::runUrlProbe(const Target& target) {
                 failed.outbound_tag = it.key().toStdString(); failed.latency_ms = 0;
                 failed.error = error.toStdString();
                 applyUrlResult(ent, failed);
+                if (target.onResult) target.onResult(ent);
             }
         }
         return;
@@ -326,11 +328,13 @@ void TestRunner::runUrlProbe(const Target& target) {
             // Already counted; only a VPN endpoint's connect-only verdict can still change it.
             if (!res.error.value().empty() && testRunnerIsVpnProfile(ent)) {
                 applyUrlResult(ent, res, &vpnConnected);
+                if (target.onResult) target.onResult(ent);
                 runOnUiThread([this, entid] { observer_->testedProfilesChanged({entid}); });
             }
             continue;
         }
         applyUrlResult(ent, res, &vpnConnected);
+        if (target.onResult) target.onResult(ent);
         {
             observer_->testProgressed();
             observer_->testViewChanged(true);
@@ -385,8 +389,9 @@ void TestRunner::runIpProbe(const Target& target) {
     }
 }
 
-bool TestRunner::runUrlTests(const QList<int>& profileIDs, const std::function<void()>& onFinished, bool interactive) {
-    return runLatencyGroup(LatencyKind::Url, profileIDs, onFinished, false, interactive);
+bool TestRunner::runUrlTests(const QList<int>& profileIDs, const std::function<void()>& onFinished, bool interactive,
+                             const ResultHook& onResult) {
+    return runLatencyGroup(LatencyKind::Url, profileIDs, onFinished, false, interactive, onResult);
 }
 
 void TestRunner::queueUrlTests(const QList<int>& profileIDs, const std::function<void()>& onFinished, bool interactive) {
@@ -398,7 +403,8 @@ bool TestRunner::runIpTests(const QList<int>& profileIDs, const std::function<vo
 }
 
 bool TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedIDs,
-                                 const std::function<void()>& onFinished, bool waitForSession, bool interactive) {
+                                 const std::function<void()>& onFinished, bool waitForSession, bool interactive,
+                                 const ResultHook& onResult) {
     const bool isUrl = kind == LatencyKind::Url;
     const auto panelKind = isUrl ? TestKind::Latency : TestKind::Ip;
     // Must fire on every exit path — a caller may be blocked on it.
@@ -447,14 +453,14 @@ bool TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
         observer_->testStateChanged(profileIDs, 1);
     });
 
-    runOnNewThread([this, profileIDs, panelKind, isUrl, finish]() {
+    runOnNewThread([this, profileIDs, panelKind, isUrl, finish, onResult]() {
         observer_->testPanelSeeded(panelKind, profileIDs.size());
         observer_->testViewChanged(true);
 
         // Native transports finish on their own: a slow handshake must not hold the next batch back.
         QSemaphore nativeDone;
         int nativeCount = 0;
-        auto runBatch = [this, isUrl, &nativeDone, &nativeCount](const QList<std::shared_ptr<Configs::Profile>>& profileSlice, const QList<int>& ids) {
+        auto runBatch = [this, isUrl, &nativeDone, &nativeCount, &onResult](const QList<std::shared_ptr<Configs::Profile>>& profileSlice, const QList<int>& ids) {
             auto buildObject = Configs::BuildTestConfig(profileSlice);
             if (!buildObject->error.isEmpty()) {
                 MW_show_log(MainWindowTr::tr("Failed to build test config for batch: ") + buildObject->error);
@@ -481,6 +487,7 @@ bool TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
                 target.coreConfig = buildObject->fullConfigs[entID];
                 target.useDefaultOutbound = true;
                 target.entID = entID;
+                target.onResult = onResult;
                 target.qwdttConfig = buildObject->qwdttConfigs.value(entID);
                 if (isUrl && !target.qwdttConfig.isEmpty()) {
                     auto config = QJsonDocument::fromJson(target.qwdttConfig.toUtf8()).object();
@@ -508,6 +515,7 @@ bool TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
                 target.outboundTags = buildObject->outboundTags;
                 target.tag2entID = buildObject->tag2entID;
                 target.xrayDnsStrategy = buildObject->xrayDnsStrategy;
+                target.onResult = onResult;
                 probe(target);
             }
             for (const auto &target : individualTargets) probe(target);
