@@ -304,7 +304,7 @@ void MainWindow::setupConnectionFilter()
     };
     auto* connectionButtons = buttonGroup({btnFilter, connectionExpandButton, connectionCloseAllButton});
     // A tab widget has one top-right corner, so the Logs tab's buttons share it.
-    auto* logButtons = buttonGroup({logJumpLatestButton, logFilterButton});
+    auto* logButtons = buttonGroup({logJumpLatestButton, logSendButton, logFilterButton});
     auto* corner = buttonGroup({logButtons, connectionButtons});
     ui->stats_widget->setCornerWidget(corner, Qt::TopRightCorner);
 

@@ -8472,6 +8472,22 @@ Improves hole-punching reliability. Requires IPv4.</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Send logs</source>
+        <translation>Отправить логи</translation>
+    </message>
+    <message>
+        <source>Save the log with the app and system details, secrets hidden, and copy the file to paste into a chat</source>
+        <translation>Сохранить лог со сведениями о программе и системе, скрыв секреты, и скопировать файл, чтобы вставить его в чат</translation>
+    </message>
+    <message>
+        <source>Could not save the log: %1</source>
+        <translation>Не удалось сохранить лог: %1</translation>
+    </message>
+    <message>
+        <source>The log is saved and copied: paste it into a chat. %1</source>
+        <translation>Лог сохранён и скопирован: вставьте его в чат. %1</translation>
+    </message>
+    <message>
         <source>About Rawline</source>
         <translation>О программе</translation>
     </message>

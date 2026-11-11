@@ -1,7 +1,18 @@
 #include "include/ui/mainwindow.h"
+#include "NkrVersion.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFile>
+#include <QMimeData>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include <QSysInfo>
+#include <QUrl>
 #include <QMenu>
 #include <QMutexLocker>
 #include <QScrollBar>
@@ -96,6 +107,10 @@ void MainWindow::setupLogView() {
     logJumpLatestButton = new QToolButton(this);
     logJumpLatestButton->setToolTip(tr("New logs are held while the view is scrolled up"));
     connect(logJumpLatestButton, &QToolButton::clicked, this, [this] { releaseHeldLogs(); });
+    logSendButton = new QToolButton(this);
+    logSendButton->setText(tr("Send logs"));
+    logSendButton->setToolTip(tr("Save the log with the app and system details, secrets hidden, and copy the file to paste into a chat"));
+    connect(logSendButton, &QToolButton::clicked, this, [this] { sendLogs(); });
     logFilterButton = new QToolButton(this);
     logFilterButton->setIcon(QIcon(":/icon/filter.png"));
     logFilterButton->setCheckable(true);
@@ -328,6 +343,7 @@ void MainWindow::on_masterLogBrowser_customContextMenuRequested(const QPoint &po
     auto sep = new QAction(this);
     sep->setSeparator(true);
     menu->addAction(sep);
+    connect(menu->addAction(tr("Send logs")), &QAction::triggered, this, [this] { sendLogs(); });
 
     auto action_clear = new QAction(this);
     action_clear->setText(tr("Clear"));
@@ -346,4 +362,45 @@ void MainWindow::on_masterLogBrowser_customContextMenuRequested(const QPoint &po
     menu->addAction(action_clear);
 
     menu->exec(ui->masterLogBrowser->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::sendLogs() {
+    QString text;
+    {
+        QMutexLocker pendingLocker(&logPendingMutex);
+        for (const auto &line : m_logLines) text += line.text + '\n';
+        for (const auto &line : m_logHeld) text += line + '\n';
+        text += logPendingText;
+    }
+    // Best effort, as the mobile export: identities and secrets go, the story of the connection stays.
+    static const QList<std::pair<QRegularExpression, QString>> secrets{
+        {QRegularExpression(R"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"), QStringLiteral("<uuid>")},
+        {QRegularExpression(R"((\"(?:password|passwd|secret|token|key|private_key|pre_shared_key|psk|auth|uuid|id)\"\s*:\s*\")[^\"]*)", QRegularExpression::CaseInsensitiveOption), QStringLiteral("\\1<redacted>")},
+        {QRegularExpression(R"(\b((?:password|pass|secret|token|key|pbk|sid|auth)=)[^&\s#]+)", QRegularExpression::CaseInsensitiveOption), QStringLiteral("\\1<redacted>")},
+        {QRegularExpression(R"(\b([a-z][a-z0-9+.-]*://)[^@\s/]+@)", QRegularExpression::CaseInsensitiveOption), QStringLiteral("\\1<redacted>@")},
+    };
+    for (const auto &[pattern, replacement] : secrets) text.replace(pattern, replacement);
+
+    const auto now = QDateTime::currentDateTime();
+    QString header = QStringLiteral("===== Rawline log export =====\n");
+    header += QStringLiteral("exported  : %1\n").arg(now.toUTC().toString(Qt::ISODate));
+    header += QStringLiteral("app       : %1\n").arg(QString::fromLatin1(NKR_VERSION));
+    header += QStringLiteral("system    : %1, %2\n").arg(QSysInfo::prettyProductName(), QSysInfo::currentCpuArchitecture());
+    header += QStringLiteral("redaction : on (best effort: review before sharing)\n\n");
+
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (dir.isEmpty() || !QDir(dir).exists()) dir = QDir::homePath();
+    const QString path = QDir(dir).filePath(QStringLiteral("Rawline-log-%1.txt").arg(now.toString(QStringLiteral("yyyyMMdd-HHmmss"))));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write((header + text).toUtf8()) < 0) {
+        MessageBoxWarning(tr("Send logs"), tr("Could not save the log: %1").arg(file.errorString()));
+        return;
+    }
+    file.close();
+    // As a file on the clipboard it pastes straight into a messenger; the folder opens for anything else.
+    auto *mime = new QMimeData;
+    mime->setUrls({QUrl::fromLocalFile(path)});
+    QApplication::clipboard()->setMimeData(mime);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    showNotice(tr("The log is saved and copied: paste it into a chat. %1").arg(QDir::toNativeSeparators(path)), 6000);
 }

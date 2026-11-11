@@ -231,6 +231,7 @@ private:
     NewOrb *m_orb = nullptr;
     NewTile *m_chip = nullptr;
     NewTile *m_more = nullptr;
+    NewTile *m_sendLogs = nullptr;
     NewTile *m_add = nullptr;
     NewTile *m_refresh = nullptr;
     NewTile *m_groupMore = nullptr;

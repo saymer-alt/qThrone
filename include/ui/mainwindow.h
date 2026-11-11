@@ -340,6 +340,7 @@ private:
     QRegularExpression m_logSearch;
     QTimer *m_logSearchDebounce = nullptr;
     QToolButton *logFilterButton = nullptr;
+    QToolButton *logSendButton = nullptr;
     QToolButton *logJumpLatestButton = nullptr;
 
     struct LogFilter {
@@ -370,6 +371,8 @@ private:
     void applyLogSearch();
 
     void setLogFilterVisible(bool visible);
+    // The mobile app's "send logs": a log export with the app and system, secrets hidden, ready to paste into a chat.
+    void sendLogs();
 
     void updateLogStatus();
 

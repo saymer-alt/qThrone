@@ -1537,6 +1537,14 @@ void NewHome::buildBody(QVBoxLayout *body) {
         tabs->addWidget(tab);
     }
     tabs->addStretch(1);
+    // On the log page: the mobile app's "send logs".
+    m_sendLogs = new NewTile(NewTile::Icon);
+    m_sendLogs->setIconName("share");
+    m_sendLogs->setToolTip(QCoreApplication::translate("MainWindow", "Send logs"));
+    m_sendLogs->setFixedSize(36, 36);
+    m_sendLogs->hide();
+    connect(m_sendLogs, &QAbstractButton::clicked, this, [this] { mw->sendLogs(); });
+    tabs->addWidget(m_sendLogs);
     body->addSpacing(2);
     body->addLayout(tabs);
     body->addSpacing(10);
@@ -1732,6 +1740,7 @@ void NewHome::detach() {
 void NewHome::selectTab(int index, bool animated) {
     if (index < 0 || index >= m_tabs.size()) return;
     for (int i = 0; i < m_tabs.size(); ++i) m_tabs[i]->setSelected(i == index);
+    m_sendLogs->setVisible(index > 0 && mw->ui->stats_widget->widget(index - 1) == mw->ui->Logs);
     const int page = index == 0 ? 0 : 1;
     const bool changed = m_pages->currentIndex() != page || (page == 1 && mw->ui->stats_widget->currentIndex() != index - 1);
     m_pages->setCurrentIndex(page);
