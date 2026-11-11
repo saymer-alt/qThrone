@@ -40,7 +40,8 @@ namespace Configs
         int watchIntervalSec = 15;
         int activeSize = 8;
         int sampling = 10;
-        int toleranceMs = 300;
+        // sing-box's own default: a wider margin kept a slow server while a much faster one was available.
+        int toleranceMs = 50;
         int maxRTTms = 0; // 0 = no ceiling
         // How many members are kept confirmed working: the instant-failover pool, not a balancing setting.
         int expected = 3;
@@ -98,7 +99,9 @@ namespace Configs
             if (object.contains("watch_interval_sec")) watchIntervalSec = object["watch_interval_sec"].toInt(15);
             if (object.contains("active_size")) activeSize = object["active_size"].toInt(10);
             if (object.contains("sampling")) sampling = object["sampling"].toInt(10);
-            if (object.contains("tolerance_ms")) toleranceMs = object["tolerance_ms"].toInt(100);
+            if (object.contains("tolerance_ms")) toleranceMs = object["tolerance_ms"].toInt(50);
+            // 300 was the old default, stored with every selector: it meant "default", not a choice.
+            if (toleranceMs == 300) toleranceMs = 50;
             if (object.contains("max_rtt_ms")) maxRTTms = object["max_rtt_ms"].toInt(0);
             if (object.contains("expected")) expected = object["expected"].toInt(3);
             if (object.contains("dial_retries")) dialRetries = object["dial_retries"].toInt(2);
