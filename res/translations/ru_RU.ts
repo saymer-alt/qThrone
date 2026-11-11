@@ -10043,6 +10043,10 @@ Name: %1</source>
 <context>
     <name>QObject</name>
     <message>
+        <source>The server returned a web page; requesting the subscription again as another client.</source>
+        <translation>Сервер вернул веб-страницу; подписка запрашивается снова от имени другого клиента.</translation>
+    </message>
+    <message>
         <source>The Happ / Incy routing of &quot;%1&quot; is unavailable (%2) and was turned off; the client&apos;s routing is used.</source>
         <translation>Маршрутизация Happ / Incy подписки «%1» недоступна (%2) и отключена; используется маршрутизация клиента.</translation>
     </message>

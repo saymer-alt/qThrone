@@ -922,6 +922,14 @@ namespace Subscription {
             if (error != nullptr) *error = reason;
             return false;
         }
+        // Some subscription proxies (p.kfwl.lol) serve a web page to a client they do not know; with the app's own
+        // agent (not one the user set) the request is made once more as the widespread v2rayNG.
+        if (looksLikeWebPage(resp.data) && identity.userAgent.startsWith(QLatin1String("Happ/3.0 Rawline/"))) {
+            auto retry = identity;
+            retry.userAgent = QStringLiteral("v2rayNG/1.10.16");
+            MW_show_log(QObject::tr("The server returned a web page; requesting the subscription again as another client."));
+            return fetch(url, name, retry, body, subInfo, error, routing);
+        }
         body = std::move(resp.data);
         if (const auto tag = NetworkRequestHelper::GetHeader(resp.header, "Encrypt-Tag"); !tag.isEmpty() &&
             !DecryptProviderResponse(body, tag, resp.finalUrl, target)) {
