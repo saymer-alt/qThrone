@@ -5332,6 +5332,14 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
 <context>
     <name>EditAutoSelector</name>
     <message>
+        <source>e.g. DE,NL,FR or !RU</source>
+        <translation>напр. DE,NL,FR или !RU</translation>
+    </message>
+    <message>
+        <source>Comma-separated country codes, empty means any. Put ! before a code to exclude that country instead, e.g. !RU uses every country but Russia. Uses the country found by the IP test, so profiles that were never IP-tested are skipped while this is set.</source>
+        <translation>Коды стран через запятую, пусто — любые. ! перед кодом исключает страну, например !RU — все страны, кроме России. Используется страна из проверки IP, поэтому профили без такой проверки при заданном фильтре пропускаются.</translation>
+    </message>
+    <message>
         <source>Servers from</source>
         <translation>Серверы из</translation>
     </message>
@@ -12927,6 +12935,10 @@ Remove that endpoint from this routing profile as well?</source>
 </context>
 <context>
     <name>Validation</name>
+    <message>
+        <source>Use two-letter country codes separated by commas, for example DE,NL,FR; put ! before a code to exclude that country, for example !RU.</source>
+        <translation>Укажите двухбуквенные коды стран через запятую, например DE,NL,FR; ! перед кодом исключает страну, например !RU.</translation>
+    </message>
     <message>
         <source>The SlipNet bundle needs its password.</source>
         <translation>Для пакета SlipNet нужен пароль.</translation>
