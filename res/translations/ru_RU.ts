@@ -8180,6 +8180,10 @@ Improves hole-punching reliability. Requires IPv4.</source>
         <source>The core keeps exiting, so it is no longer restarted. Use Restart Core to try again.</source>
         <translation>Ядро постоянно завершает работу, поэтому больше не перезапускается. Попробуйте снова через «Перезапуск ядра».</translation>
     </message>
+    <message>
+        <source>Core not found: %1</source>
+        <translation>Ядро не найдено: %1</translation>
+    </message>
 </context>
 <context>
     <name>GlobalHotkeys</name>

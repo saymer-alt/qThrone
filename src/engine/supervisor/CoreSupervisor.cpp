@@ -17,6 +17,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFileInfo>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMutexLocker>
@@ -637,6 +638,12 @@ namespace Engine {
         if (wasConnected && m_connectedAt.isValid() && m_connectedAt.elapsed() >= kStableMs) m_failures = 0;
         ++m_failures;
         if (!wasConnected) ++m_startFailures;
+        // A core file that is not there will not appear by retrying: one error, then the restart waits for the user.
+        if (failedToStart && m_process && !QFileInfo(m_process->program).isFile()) {
+            m_startFailures = kGiveUpAfter;
+            m_lastCoreError = QStringLiteral("core not found: ") + m_process->program;
+            m_lastCoreErrorGen = gen;
+        }
 
         // A core that never connected never took the waiting start, and no profile can have brought it down.
         bool tooFrequent = false;
@@ -672,6 +679,7 @@ namespace Engine {
                                     : QStringLiteral("the core kept exiting");
                 if (m_lastCoreErrorGen == gen && !m_lastCoreError.isEmpty()) m_lastFailure += QStringLiteral("; last error: ") + m_lastCoreError;
             }
+            if (failedToStart && m_process && !QFileInfo(m_process->program).isFile()) m_lastFailure = tr("Core not found: %1").arg(m_process->program);
             MW_show_log("[ERROR] " + m_lastFailure);
             setState(CoreState::GaveUp);
             emit coreGaveUp(m_lastFailure);
