@@ -357,6 +357,11 @@ namespace Configs {
         int qwdtt_auto_hash_count = 1;
         bool vk_relay_linked = false;
         // Modes a new relay profile takes when its link names none; the originals' defaults.
+        // Where the new interface puts its blocks: the panel (left/right), the subscription card (top/bottom/list)
+        // and the connect button with its switches (top/bottom).
+        QString new_layout_panel = "left";
+        QString new_layout_chip = "top";
+        QString new_layout_controls = "top";
         QString relay_default_qwdtt_mode = "wg";
         QString relay_default_wdttplus_mode = "wg";
         QString relay_default_csqtt_transport = "udp";

@@ -14875,6 +14875,14 @@ Remove that endpoint from this routing profile as well?</source>
 <context>
     <name>NewHome</name>
     <message>
+        <source>Arrange the window</source>
+        <translation>Изменить расположение</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Готово</translation>
+    </message>
+    <message>
         <source>Click to connect</source>
         <translation>Нажмите для подключения</translation>
     </message>

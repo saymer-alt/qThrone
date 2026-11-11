@@ -13,6 +13,7 @@
 
 class MainWindow;
 class QBoxLayout;
+class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QStackedWidget;
@@ -221,8 +222,19 @@ private:
     void checkCurrentConnection();
     void refreshGroupHeader();
     void updateNotice();
+    // Puts the panel, the subscription card and the connect block where the settings say.
+    void applyArrangement();
+    void setArranging(bool on);
 
     MainWindow *mw;
+    QHBoxLayout *m_columns = nullptr;
+    QWidget *m_side = nullptr;
+    QVBoxLayout *m_sideLayout = nullptr;
+    QVBoxLayout *m_bodyLayout = nullptr;
+    QWidget *m_header = nullptr;
+    QWidget *m_chipBox = nullptr;
+    QWidget *m_controls = nullptr;
+    QWidget *m_arrange = nullptr;
     bool m_attached = false;
     struct Slot { QBoxLayout *layout = nullptr; int index = -1; int stretch = 0; };
     Slot m_dataSlot, m_statsSlot;

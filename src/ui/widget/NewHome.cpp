@@ -1389,23 +1389,24 @@ NewHome::NewHome(MainWindow *window) : QWidget(nullptr), mw(window) {
     root->setSpacing(0);
     m_titleBar = new NewTitleBar(this);
     root->addWidget(m_titleBar);
-    auto *columns = new QHBoxLayout;
-    columns->setSpacing(12);
-    root->addLayout(columns, 1);
+    m_columns = new QHBoxLayout;
+    m_columns->setSpacing(12);
+    root->addLayout(m_columns, 1);
 
     // The header and the connect button in a side column, so the server list keeps the full height.
-    auto *side = new QWidget(this);
-    side->setFixedWidth(300);
-    auto *sideLayout = new QVBoxLayout(side);
-    sideLayout->setContentsMargins(0, 0, 0, 0);
-    sideLayout->setSpacing(0);
-    buildSide(sideLayout);
-    columns->addWidget(side);
+    m_side = new QWidget(this);
+    m_side->setFixedWidth(300);
+    m_sideLayout = new QVBoxLayout(m_side);
+    m_sideLayout->setContentsMargins(0, 0, 0, 0);
+    m_sideLayout->setSpacing(0);
+    buildSide(m_sideLayout);
+    m_columns->addWidget(m_side);
 
-    auto *body = new QVBoxLayout;
-    body->setSpacing(0);
-    buildBody(body);
-    columns->addLayout(body, 1);
+    m_bodyLayout = new QVBoxLayout;
+    m_bodyLayout->setSpacing(0);
+    buildBody(m_bodyLayout);
+    m_columns->addLayout(m_bodyLayout, 1);
+    applyArrangement();
 
     connect(Engine::host()->stats(), &Engine::StatsService::trafficSampled, this, [this](const Stats::TrafficSample &s) {
         m_rateDown = s.coreRunning ? s.proxyDown : 0;
@@ -1452,7 +1453,10 @@ void NewHome::buildSide(QVBoxLayout *side) {
     header->addWidget(m_more);
     header->addWidget(title, 1);
     header->addWidget(settings);
-    side->addLayout(header);
+    header->setContentsMargins(0, 0, 0, 0);
+    m_header = new QWidget;
+    m_header->setLayout(header);
+    side->addWidget(m_header);
 
     // The group in use, as one card with a list behind it, and adding beside it.
     auto *chipRow = new QHBoxLayout;
@@ -1468,15 +1472,22 @@ void NewHome::buildSide(QVBoxLayout *side) {
     connect(m_add, &QAbstractButton::clicked, this, [this] { showAddMenu(); });
     chipRow->addWidget(m_chip, 1);
     chipRow->addWidget(m_add);
-    side->addSpacing(14);
-    side->addLayout(chipRow);
+    chipRow->setContentsMargins(0, 14, 0, 0);
+    m_chipBox = new QWidget;
+    m_chipBox->setLayout(chipRow);
+    side->addWidget(m_chipBox);
 
+    // The connect button, the check under it and the switches move as one block.
+    m_controls = new QWidget;
+    auto *controls = new QVBoxLayout(m_controls);
+    controls->setContentsMargins(0, 0, 0, 0);
+    controls->setSpacing(0);
     m_orb = new NewOrb;
     m_orb->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_orb, &QAbstractButton::clicked, this, [this] { mw->ui->toolButton_startstop->click(); });
     connect(m_orb, &QWidget::customContextMenuRequested, this, [this] { mw->show_startstop_menu(); });
-    side->addSpacing(4);
-    side->addWidget(m_orb);
+    controls->addSpacing(4);
+    controls->addWidget(m_orb);
 
     // The check and the speed sit together under the button, in fixed boxes so nothing jumps.
     auto *status = new QHBoxLayout;
@@ -1500,16 +1511,17 @@ void NewHome::buildSide(QVBoxLayout *side) {
     auto *statusBox = new QWidget;
     statusBox->setFixedHeight(40);
     statusBox->setLayout(status);
-    side->addWidget(statusBox);
+    controls->addWidget(statusBox);
 
     m_tun = new NewSwitch(T("TUN mode"));
     m_proxy = new NewSwitch(T("System proxy"));
     connect(m_tun, &QAbstractButton::clicked, this, [this] { mw->connection()->setTun(!Configs::dataManager->settingsRepo->spmode_vpn); });
     connect(m_proxy, &QAbstractButton::clicked, this, [this] { mw->connection()->setSystemProxy(!Configs::dataManager->settingsRepo->spmode_system_proxy); });
-    side->addSpacing(10);
-    side->addWidget(m_tun);
-    side->addSpacing(6);
-    side->addWidget(m_proxy);
+    controls->addSpacing(10);
+    controls->addWidget(m_tun);
+    controls->addSpacing(6);
+    controls->addWidget(m_proxy);
+    side->addWidget(m_controls);
     side->addStretch(1);
 
     // What the classic status bar said: the server in use and where the proxy listens.
@@ -1977,6 +1989,7 @@ void NewHome::showMoreMenu() {
     menu->addMenu(ui->menu_preferences);
     menu->addMenu(ui->menu_program);
     menu->addSeparator();
+    connect(menu->addAction(T("Arrange the window")), &QAction::triggered, this, [this] { setArranging(true); });
     if (ui->actionCheck_For_Update->isEnabled()) menu->addAction(ui->actionCheck_For_Update);
     guardReopen(menu, m_more);
     menu->popup(m_more->mapToGlobal(QPoint(0, m_more->height() + 6)));
@@ -2034,6 +2047,121 @@ void NewHome::showGroupMenu() {
     if (Engine::host()->tests()->isRunning()) menu->addAction(ui->menu_stop_testing);
     guardReopen(menu, m_groupMore);
     menu->popup(m_groupMore->mapToGlobal(QPoint(m_groupMore->width() - menu->sizeHint().width(), m_groupMore->height() + 2)));
+}
+
+namespace {
+    // The arranging mode over the window: each movable block in a blinking dashed frame, arrows that send it to a
+    // place, and Done. The rest of the window does not take clicks meanwhile.
+    class ArrangeOverlay : public QWidget {
+    public:
+        struct Block { QPointer<QWidget> widget; QList<NewTile *> arrows; };
+        ArrangeOverlay(QWidget *parent, std::function<void()> done) : QWidget(parent) {
+            m_done = new NewTile(NewTile::Chip, this);
+            m_done->setText(QCoreApplication::translate("NewHome", "Done"));
+            m_done->setFixedSize(120, 40);
+            connect(m_done, &QAbstractButton::clicked, this, std::move(done));
+            auto *timer = new QTimer(this);
+            connect(timer, &QTimer::timeout, this, [this] { m_phase = (m_phase + 1) % 32; place(); update(); });
+            timer->start(60);
+            parent->installEventFilter(this);
+        }
+        void addBlock(QWidget *widget, const QList<std::pair<QString, std::function<void()>>> &moves) {
+            Block block{widget, {}};
+            for (const auto &[text, move] : moves) {
+                auto *arrow = new NewTile(NewTile::Chip, this);
+                arrow->setText(text);
+                arrow->setFixedSize(40, 36);
+                connect(arrow, &QAbstractButton::clicked, this, move);
+                arrow->show();
+                block.arrows << arrow;
+            }
+            m_blocks << block;
+            place();
+        }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.fillRect(rect(), NewStyle::light() ? QColor(255, 255, 255, 60) : QColor(0, 0, 0, 70));
+            // Marching dashes that also breathe, as the mobile editor's frames do.
+            const qreal pulse = 0.55 + 0.45 * std::sin(m_phase * M_PI / 16);
+            QPen pen(withAlpha(NewStyle::text(), int(110 + 145 * pulse)), 1.6, Qt::DashLine);
+            pen.setDashOffset(m_phase / 2.0);
+            p.setPen(pen);
+            p.setBrush(Qt::NoBrush);
+            for (const auto &block : m_blocks) if (block.widget && block.widget->isVisible()) p.drawRoundedRect(QRectF(frameOf(block)).adjusted(-4, -4, 4, 4), 16, 16);
+        }
+        void resizeEvent(QResizeEvent *) override { place(); }
+        bool eventFilter(QObject *watched, QEvent *event) override {
+            if (watched == parentWidget() && event->type() == QEvent::Resize) setGeometry(parentWidget()->rect());
+            return false;
+        }
+        void mousePressEvent(QMouseEvent *event) override { event->accept(); }
+    private:
+        QRect frameOf(const Block &block) const { return QRect(mapFromGlobal(block.widget->mapToGlobal(QPoint())), block.widget->size()); }
+        void place() {
+            for (const auto &block : m_blocks) {
+                if (!block.widget) continue;
+                const QRect frame = frameOf(block);
+                const int width = int(block.arrows.size()) * 46 - 6;
+                int x = frame.center().x() - width / 2;
+                for (auto *arrow : block.arrows) { arrow->move(x, frame.center().y() - 18); arrow->raise(); x += 46; }
+            }
+            m_done->move(width() - m_done->width() - 24, height() - m_done->height() - 24);
+            m_done->raise();
+        }
+        QList<Block> m_blocks;
+        NewTile *m_done;
+        int m_phase = 0;
+    };
+}
+
+void NewHome::applyArrangement() {
+    const auto &settings = *Configs::dataManager->settingsRepo;
+    m_columns->removeWidget(m_side);
+    m_columns->insertWidget(settings.new_layout_panel == QLatin1String("right") ? 1 : 0, m_side);
+    // The panel's order: header, card on top, the connect block, room, card at the bottom, the status lines.
+    m_sideLayout->removeWidget(m_chipBox);
+    m_bodyLayout->removeWidget(m_chipBox);
+    m_sideLayout->removeWidget(m_controls);
+    for (int i = m_sideLayout->count() - 1; i >= 0; --i) if (m_sideLayout->itemAt(i)->spacerItem()) delete m_sideLayout->takeAt(i);
+    int at = m_sideLayout->indexOf(m_header) + 1;
+    const QString chip = settings.new_layout_chip;
+    if (chip == QLatin1String("top")) m_sideLayout->insertWidget(at++, m_chipBox);
+    if (settings.new_layout_controls == QLatin1String("bottom")) {
+        m_sideLayout->insertStretch(at++, 1);
+        m_sideLayout->insertWidget(at++, m_controls);
+    } else {
+        m_sideLayout->insertWidget(at++, m_controls);
+        m_sideLayout->insertStretch(at++, 1);
+    }
+    if (chip == QLatin1String("bottom")) m_sideLayout->insertWidget(at++, m_chipBox);
+    if (chip == QLatin1String("list")) m_bodyLayout->insertWidget(0, m_chipBox);
+    m_chipBox->layout()->setContentsMargins(0, chip == QLatin1String("list") ? 0 : 14, 0, chip == QLatin1String("list") ? 10 : 0);
+    m_chipBox->show();
+}
+
+void NewHome::setArranging(bool on) {
+    if (!on) { delete m_arrange; m_arrange = nullptr; return; }
+    if (m_arrange) return;
+    auto &settings = *Configs::dataManager->settingsRepo;
+    const auto set = [this](QString &field, const char *value) {
+        field = QLatin1String(value);
+        Configs::dataManager->settingsRepo->Save();
+        applyArrangement();
+    };
+    auto *overlay = new ArrangeOverlay(this, [this] { setArranging(false); });
+    overlay->addBlock(m_side, {{QStringLiteral("←"), [=, &settings] { set(settings.new_layout_panel, "left"); }},
+                               {QStringLiteral("→"), [=, &settings] { set(settings.new_layout_panel, "right"); }}});
+    overlay->addBlock(m_chipBox, {{QStringLiteral("↑"), [=, &settings] { set(settings.new_layout_chip, "top"); }},
+                                  {QStringLiteral("↓"), [=, &settings] { set(settings.new_layout_chip, "bottom"); }},
+                                  {QStringLiteral("⇥"), [=, &settings] { set(settings.new_layout_chip, "list"); }}});
+    overlay->addBlock(m_controls, {{QStringLiteral("↑"), [=, &settings] { set(settings.new_layout_controls, "top"); }},
+                                   {QStringLiteral("↓"), [=, &settings] { set(settings.new_layout_controls, "bottom"); }}});
+    overlay->setGeometry(rect());
+    overlay->show();
+    overlay->raise();
+    m_arrange = overlay;
 }
 
 void NewHome::paintEvent(QPaintEvent *) {
