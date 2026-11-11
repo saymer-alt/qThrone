@@ -45,11 +45,13 @@ namespace Subscription {
         return result;
     }
     // happ://crypt.. and incy://crypt1 open in the core's helper, which holds the providers' public compatibility keys.
-    static QString decryptProviderLink(const QString &link) {
+    static QString helperContent(const QString &operation, const QString &link, const QJsonObject &server = {}, QString *error = nullptr) {
         QProcess process;
         process.start(Configs::FindCoreRealPath(), {"--relay"});
         if (!process.waitForStarted(5000)) return {};
-        process.write(QJsonDocument(QJsonObject{{"operation", "provider-decrypt"}, {"value", link}}).toJson(QJsonDocument::Compact) + '\n');
+        QJsonObject request{{"operation", operation}, {"value", link}};
+        if (!server.isEmpty()) request["server"] = server;
+        process.write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
         QByteArray pending;
         QElapsedTimer elapsed;
         elapsed.start();
@@ -63,13 +65,35 @@ namespace Subscription {
                 const auto event = QJsonDocument::fromJson(pending.left(end)).object();
                 pending.remove(0, end + 1);
                 if (event["type"] == "result") content = event["value"].toObject()["content"].toString();
-                if (event["type"] == "error") failed = true;
+                if (event["type"] == "error") { failed = true; if (error) *error = event["text"].toString(); }
             }
             if (failed || process.state() == QProcess::NotRunning) break;
         }
         process.closeWriteChannel();
         if (!process.waitForFinished(1000)) process.kill();
         return content;
+    }
+
+    static QString decryptProviderLink(const QString &link) { return helperContent(QStringLiteral("provider-decrypt"), link); }
+
+    QString ExpandSlipnetBundles(const QString &text, const std::function<QString()> &askPassword) {
+        static const QRegularExpression bundle(QStringLiteral(R"(slipnet-bundle-enc://[A-Za-z0-9+/=_-]+)"), QRegularExpression::CaseInsensitiveOption);
+        QString result = text;
+        for (auto it = bundle.globalMatch(text); it.hasNext();) {
+            const auto link = it.next().captured(0);
+            QString error = QCoreApplication::translate("Validation", "The SlipNet bundle needs its password.");
+            for (int attempt = 0; attempt < 3; ++attempt) {
+                const QString password = askPassword ? askPassword() : QString();
+                if (password.isEmpty()) break;
+                if (const auto content = helperContent(QStringLiteral("slipnet-bundle-decrypt"), link, QJsonObject{{"password", password}}, &error); !content.isEmpty()) {
+                    result.replace(link, content);
+                    error.clear();
+                    break;
+                }
+            }
+            if (!error.isEmpty()) MW_show_log(QCoreApplication::translate("Validation", "SlipNet bundle not imported: %1").arg(error));
+        }
+        return result;
     }
 
     bool DecryptProviderResponse(QByteArray &body, const QString &tag, const QString &finalUrl, const QString &originalUrl) {

@@ -8472,6 +8472,10 @@ Improves hole-punching reliability. Requires IPv4.</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Password of the SlipNet bundle</source>
+        <translation>Пароль пакета SlipNet</translation>
+    </message>
+    <message>
         <source>Send logs</source>
         <translation>Отправить логи</translation>
     </message>
@@ -12903,6 +12907,14 @@ Remove that endpoint from this routing profile as well?</source>
 </context>
 <context>
     <name>Validation</name>
+    <message>
+        <source>The SlipNet bundle needs its password.</source>
+        <translation>Для пакета SlipNet нужен пароль.</translation>
+    </message>
+    <message>
+        <source>SlipNet bundle not imported: %1</source>
+        <translation>Пакет SlipNet не импортирован: %1</translation>
+    </message>
     <message>
         <source>Add at least one profile to the chain.</source>
         <translation>Добавьте в цепочку хотя бы один профиль.</translation>

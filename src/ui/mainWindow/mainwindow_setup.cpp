@@ -18,6 +18,8 @@
 #include "include/ui/setting/dialog_basic_settings.h"
 
 #include "include/configs/sub/GroupUpdater.hpp"
+#include <QInputDialog>
+#include <QLineEdit>
 #include "include/configs/sub/RouteUpdater.hpp"
 #include "include/engine/EngineEvents.h"
 #include "include/engine/Lifecycle.h"
@@ -622,6 +624,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(filterHeader, &ProfilesTableFilterHeader::focusTableRequested, this,
             [this](bool selectFirst) { focusProfilesTable(selectFirst); });
 
+    // SlipNet's encrypted bundles ask for the password their owner set; Cancel leaves them out.
+    Subscription::updater()->bundlePassword = [this] {
+        bool ok = false;
+        const auto password = QInputDialog::getText(this, QStringLiteral("SlipNet"), tr("Password of the SlipNet bundle"), QLineEdit::Password, {}, &ok);
+        return ok ? password : QString();
+    };
     connect(Subscription::updater(), &Subscription::GroupUpdater::asyncUpdateCallback, this, [this](int gid) {
         if (gid >= 0) updateTabToolTip(gid);
     });

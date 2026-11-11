@@ -145,6 +145,11 @@ func Run(input io.Reader, output io.Writer) (err error) {
 		if err == nil {
 			p.emit("result", "", decrypted)
 		}
+	case "slipnet-bundle-decrypt":
+		var content string
+		if content, err = decryptSlipnetBundle(r.Value, r.Server["password"]); err == nil {
+			p.emit("result", "", map[string]string{"content": content})
+		}
 	case "provider-response":
 		if err = decryptProviderResponse(r.Value, r.ID, r.Server["final"], r.Server["original"]); err == nil {
 			p.emit("result", "", true)

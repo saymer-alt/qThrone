@@ -743,7 +743,8 @@ namespace Subscription {
         }, finish});
     }
 
-    void GroupUpdater::ImportText(const QString &text, int gid, const Finish &finish) {
+    void GroupUpdater::ImportText(const QString &input, int gid, const Finish &finish) {
+        const QString text = input.contains(QLatin1String("slipnet-bundle-enc://"), Qt::CaseInsensitive) ? ExpandSlipnetBundles(input, bundlePassword) : input;
         // A wrapped subscription link (happ://, incy://) is a subscription, whichever way it reached the import.
         const auto content = UnwrapProviderLink(text);
         if (content != text.trimmed() && (content.startsWith("http://") || content.startsWith("https://"))) { SubscribeUrl(content, finish); return; }
@@ -764,7 +765,8 @@ namespace Subscription {
         }, finish});
     }
 
-    void GroupUpdater::ImportTextTo(int gid, const QString &text, const OutcomeFinish &done) {
+    void GroupUpdater::ImportTextTo(int gid, const QString &input, const OutcomeFinish &done) {
+        const QString text = input.contains(QLatin1String("slipnet-bundle-enc://"), Qt::CaseInsensitive) ? ExpandSlipnetBundles(input, bundlePassword) : input;
         const auto content = UnwrapProviderLink(text);
         if (content != text.trimmed() && (content.startsWith("http://") || content.startsWith("https://"))) { ImportUrlTo(gid, content, done); return; }
         QByteArray body = (content.isEmpty() ? text : content).toUtf8();

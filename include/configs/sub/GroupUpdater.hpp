@@ -94,6 +94,9 @@ namespace Subscription {
 
         void ImportText(const QString &text, int gid = -1, const Finish &finish = nullptr);
 
+        // Asks for the password of an encrypted bundle in imported text; set by the interface, empty without one.
+        std::function<QString()> bundlePassword;
+
         void ImportBatch(const QStringList &payloads, const Finish &finish = nullptr);
 
         // Copies land in the current group and keep their source's endpoint, which no link carries.
