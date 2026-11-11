@@ -26,7 +26,7 @@ static QString exeName() {
 
 // None of these is keyed by install path, so two portable copies write the same keys and the last launched one wins.
 static QStringList commandKeys(Association a) {
-    if (a == Association::Links) return {kClasses + "\\rawline"};
+    if (a == Association::Links) return {kClasses + "\\rawline", kClasses + "\\throne"};
     return {kClasses + "\\" + kProgId, kClasses + "\\Applications\\" + exeName()};
 }
 
@@ -54,7 +54,7 @@ bool UrlScheme_IsCurrent(Association a) {
 }
 
 static void applyLinks(const QString &command) {
-    for (const QString &name : {QStringLiteral("rawline")}) {
+    for (const QString &name : {QStringLiteral("rawline"), QStringLiteral("throne")}) {
         QSettings scheme(kClasses + "\\" + name, QSettings::NativeFormat);
         scheme.setValue("Default", "URL:Rawline Protocol");
         scheme.setValue("URL Protocol", "");
@@ -99,6 +99,7 @@ void UrlScheme_Remove(Association a) {
     QSettings classes(kClasses, QSettings::NativeFormat);
     if (a == Association::Links) {
         classes.remove("rawline");
+        classes.remove("throne");
     } else {
         classes.remove(kProgId);
         classes.remove("Applications/" + exeName());

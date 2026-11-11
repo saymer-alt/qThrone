@@ -40,6 +40,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>rawline</string>
+				<string>throne</string>
 			</array>
 		</dict>
 	</array>
