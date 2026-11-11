@@ -114,6 +114,7 @@ namespace Configs {
         bool dns_optimistic_164_migrated = false;
         bool test_defaults_182_migrated = false;
         bool test_url_https_199_migrated = false;
+        bool theme_rawline_110_migrated = false;
         int language = 0;
         QString font = "";
         int font_size = 0;

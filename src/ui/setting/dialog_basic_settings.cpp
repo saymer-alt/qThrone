@@ -404,9 +404,10 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->seasonal_decoration->addItem(tr("Лето"), "kupala");
     const int decorationIndex = ui->seasonal_decoration->findData(Configs::dataManager->settingsRepo->seasonal_decoration);
     ui->seasonal_decoration->setCurrentIndex(decorationIndex >= 0 ? decorationIndex : ui->seasonal_decoration->findData("auto"));
-    auto themeId = Configs::dataManager->settingsRepo->theme.toInt(&ok);
+    Configs::dataManager->settingsRepo->theme.toInt(&ok);
     if (ok) {
-        ui->theme->setCurrentIndex(themeId);
+        // A number was an index into the old list; the startup turns it into System.
+        ui->theme->setCurrentText(QStringLiteral("System"));
     } else if (NewStyle::isTheme(Configs::dataManager->settingsRepo->theme)) {
         ui->theme->setCurrentIndex(ui->theme->findData(Configs::dataManager->settingsRepo->theme));
     } else {

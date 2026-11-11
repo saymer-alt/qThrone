@@ -26,6 +26,12 @@ namespace Configs {
             dns_optimistic_164_migrated = true;
             initialized = true;
         }
+        // 1.1 makes the Rawline OLED look the default once: a theme left at the old default (System) moves to it.
+        if (!theme_rawline_110_migrated) {
+            if (theme.isEmpty() || theme == QLatin1String("0") || theme.compare(QLatin1String("System"), Qt::CaseInsensitive) == 0) theme = QStringLiteral("NewOLED");
+            theme_rawline_110_migrated = true;
+            initialized = true;
+        }
         // 1.8.2 sets the test defaults once: 32 profiles at a time, 5 s for a ping and for a speed test.
         if (!test_defaults_182_migrated) {
             test_concurrent = 32;
@@ -58,6 +64,7 @@ namespace Configs {
             {"dns_optimistic_164_migrated", &dns_optimistic_164_migrated},
             {"test_defaults_182_migrated", &test_defaults_182_migrated},
             {"test_url_https_199_migrated", &test_url_https_199_migrated},
+            {"theme_rawline_110_migrated", &theme_rawline_110_migrated},
             {"vk_relay_linked", &vk_relay_linked},
             {"mrtt_max_risk_acknowledged", &mrtt_max_risk_acknowledged},
             {"disable_tray",                  &disable_tray},
