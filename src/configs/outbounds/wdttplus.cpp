@@ -75,7 +75,7 @@ bool wdttplus::ParseFromJson(const QJsonObject &object) {
     maxWorkers = object["max_workers"].toInt(0);
     legacy = object["legacy"].toBool(false);
     engine = object["engine"].toString("qwdtt");
-    mode = object["mode"].toString("wg");
+    mode = object["mode"].toString(dataManager ? dataManager->settingsRepo->relay_default_wdttplus_mode : QStringLiteral("wg"));
     rawPort = object["raw_port"].toInt(56003);
     workers = NormalizeWorkers(object["workers"].toInt(18), maxWorkers);
     captchaMode = object["captcha_mode"].toString("auto");

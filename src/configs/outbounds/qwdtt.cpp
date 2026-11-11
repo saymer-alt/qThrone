@@ -89,7 +89,8 @@ bool qwdtt::ParseFromJson(const QJsonObject &o) {
     if (o.contains("peer") && !setPeer(*this, o["peer"].toString())) return false;
     if (o.contains("name")) name = o["name"].toString();
     password = o.contains("password") ? o["password"].toString() : o["pass"].toString();
-    mode = normalizedMode(o["mode"].toString().toLower());
+    const QString givenMode = o["mode"].toString().toLower();
+    mode = normalizedMode(givenMode.isEmpty() && dataManager ? dataManager->settingsRepo->relay_default_qwdtt_mode : givenMode);
     rawPort = o["raw_port"].toInt(56003);
     workers = o["workers"].toInt(o["workersPerHash"].toInt(9));
     turnTCP = o["turn_tcp"].toBool(true);

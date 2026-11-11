@@ -112,7 +112,7 @@ bool mrtt::ParseFromJson(const QJsonObject &object) {
     jitsiRoom = object["jitsi_room"].toString();
     jitsiSeats = qBound(0, object["jitsi_seats"].toInt(), int(MaxJitsiWorkers));
     jitsiWorkers = qBound(int(MinJitsiWorkers), object["jitsi_workers"].toInt(6), int(MaxJitsiWorkers));
-    turnTransport = object["turn_transport"].toString("udp");
+    turnTransport = object["turn_transport"].toString(dataManager ? dataManager->settingsRepo->relay_default_mrtt_transport : QStringLiteral("udp"));
     srtpMode = object["srtp_mode"].toString("auto");
     fingerprint = object["fingerprint"].toString("firefox");
     clientIds = object["client_ids"].toString("8202606,6287487");

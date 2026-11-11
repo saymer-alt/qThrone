@@ -356,6 +356,12 @@ namespace Configs {
         QString relay_device_id;
         int qwdtt_auto_hash_count = 1;
         bool vk_relay_linked = false;
+        // Modes a new relay profile takes when its link names none; the originals' defaults.
+        QString relay_default_qwdtt_mode = "wg";
+        QString relay_default_wdttplus_mode = "wg";
+        QString relay_default_csqtt_transport = "udp";
+        QString relay_default_csqtt_srtp = "auto";
+        QString relay_default_mrtt_transport = "udp";
         bool mrtt_max_risk_acknowledged = false;
 
         // Last 5 custom entries per field.

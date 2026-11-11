@@ -1504,6 +1504,32 @@ DialogVKRelay::DialogVKRelay(QWidget *parent) : QDialog(parent) {
             return;
         }
     };
+    {
+        // The mode each relay protocol takes when a link or a new profile names none.
+        auto *page = new QWidget(tabs);
+        tabs->addTab(page, "Режимы по умолчанию");
+        auto *form = new QFormLayout(page);
+        auto *note = new QLabel("Режим, который получают новые и импортированные профили, если ссылка его не задаёт. "
+                                "Профили с уже выбранным режимом не меняются.", page);
+        note->setWordWrap(true);
+        form->addRow(note);
+        auto &settings = *Configs::dataManager->settingsRepo;
+        const auto choice = [page, form](const QString &title, QString &value, const QList<QPair<QString, QString>> &items) {
+            auto *box = new QComboBox(page);
+            for (const auto &[key, label] : items) box->addItem(label, key);
+            box->setCurrentIndex(std::max(0, box->findData(value)));
+            QObject::connect(box, &QComboBox::currentIndexChanged, page, [box, &value] {
+                value = box->currentData().toString();
+                Configs::dataManager->settingsRepo->Save();
+            });
+            form->addRow(title, box);
+        };
+        choice("qWDTT", settings.relay_default_qwdtt_mode, {{"wg", "WG (по умолчанию)"}, {"raw", "RAW"}});
+        choice("WDTT на движке qWDTT", settings.relay_default_wdttplus_mode, {{"wg", "WG (по умолчанию)"}, {"raw", "RAW"}});
+        choice("CSQTT: транспорт TURN", settings.relay_default_csqtt_transport, {{"udp", "UDP (по умолчанию)"}, {"tcp_tls", "TCP/TLS"}});
+        choice("CSQTT: режим SRTP", settings.relay_default_csqtt_srtp, {{"auto", "Автоматически (по умолчанию)"}, {"wrap", "WRAP-SRTP"}, {"dtls", "DTLS-SRTP"}});
+        choice("MRTT: транспорт TURN", settings.relay_default_mrtt_transport, {{"udp", "UDP (по умолчанию)"}, {"tcp_tls", "TCP/TLS"}});
+    }
     for (const auto &kind : {QString("mrtt"), QString("qwdtt"), QString("csqtt"), QString("wdttplus"), QString("freeturn")}) {
         auto *page = new QWidget(tabs);
         page->setEnabled(false);
