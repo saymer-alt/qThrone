@@ -168,6 +168,8 @@ namespace Configs {
             struct RouteOutboundGroup {
                 QList<int> hopIDs;
                 std::shared_ptr<Profile> chainWrapper;
+                // The profile the rule picked, which names the outbound when group proxies wrap it.
+                std::shared_ptr<Profile> picked;
             };
             QList<RouteOutboundGroup> routeOutboundGroups;
             struct AuxEndpointGroup {
@@ -839,6 +841,14 @@ namespace Configs {
                     ctx.error = QObject::tr("The profile \"%1\" cannot be used in routing rules: it is a full config or runs in an extra core, so it only works as the main profile. Pick a regular profile.").arg(neededEnt->outbound ? neededEnt->outbound->name : QString());
                     return;
                 }
+                // Wrapped in its group's landing and front proxies as the main chain is, so a server the group reaches only
+                // through its front proxy is not dialled bare; a proxy since deleted is left out, never failing the start.
+                QList<int> hopIDs;
+                int frontID = -1;
+                if (const auto group = dataManager->groupsRepo->GetGroup(neededEnt->gid)) {
+                    if (group->landing_proxy_id >= 0 && getProfile(group->landing_proxy_id) != nullptr) hopIDs << group->landing_proxy_id;
+                    if (group->front_proxy_id >= 0 && getProfile(group->front_proxy_id) != nullptr) frontID = group->front_proxy_id;
+                }
                 if (neededEnt->type == "chain") {
                     auto chain = neededEnt->Chain();
                     if (chain == nullptr || chain->list.isEmpty()) {
@@ -855,17 +865,17 @@ namespace Configs {
                             ctx.error = "Chain hops in routing profile cannot use an extra core, a custom full config, or be of type chain";
                             return;
                         }
-                        if (usesXrayCore(hopEnt)) ctx.proxyUsesXray = true;
                     }
-                    preReqs.routing.outboundMap[item] = hopTag(tags::routeChainPrefix, suffix);
                     // Reversed to match the main-chain build order: outer hop first.
-                    preReqs.routing.routeOutboundGroups << RoutingDeps::RouteOutboundGroup{{chain->list.rbegin(), chain->list.rend()}, neededEnt};
-                    suffix += static_cast<int>(chain->list.size());
+                    std::copy(chain->list.crbegin(), chain->list.crend(), std::back_inserter(hopIDs));
                 } else {
-                    if (usesXrayCore(neededEnt)) ctx.proxyUsesXray = true;
-                    preReqs.routing.outboundMap[item] = hopTag(tags::routeChainPrefix, suffix++);
-                    preReqs.routing.routeOutboundGroups << RoutingDeps::RouteOutboundGroup{QList<int>{item}, nullptr};
+                    hopIDs << item;
                 }
+                if (frontID >= 0) hopIDs << frontID;
+                for (int hopID : hopIDs) if (const auto hop = getProfile(hopID); hop != nullptr && usesXrayCore(hop)) ctx.proxyUsesXray = true;
+                preReqs.routing.outboundMap[item] = hopTag(tags::routeChainPrefix, suffix);
+                preReqs.routing.routeOutboundGroups << RoutingDeps::RouteOutboundGroup{hopIDs, neededEnt->type == "chain" ? neededEnt : nullptr, neededEnt};
+                suffix += static_cast<int>(hopIDs.size());
             }
 
             if (!routeChain->endpointProfileIDs.isEmpty()) {
@@ -1000,11 +1010,14 @@ namespace Configs {
             QList<std::shared_ptr<Profile>> extraCoreProfiles;
             if (mainExtraCore != nullptr) extraCoreProfiles.append(mainExtraCore);
             for (const auto &group : preReqs.routing.routeOutboundGroups) {
-                if (group.hopIDs.size() != 1) continue;
-                auto routed = getProfile(group.hopIDs.first());
-                if (routed == nullptr || !IsNativeTransport(routed->type)) continue;
-                if (mainExtraCore != nullptr && routed->id == mainExtraCore->id) continue;
-                extraCoreProfiles.append(routed);
+                // A routed transport stands alone or inside its group's landing / front proxies; chain hops never are one.
+                if (group.chainWrapper != nullptr && group.chainWrapper->type == "chain") continue;
+                for (int hopID : group.hopIDs) {
+                    auto routed = getProfile(hopID);
+                    if (routed == nullptr || !IsNativeTransport(routed->type)) continue;
+                    if (std::any_of(extraCoreProfiles.cbegin(), extraCoreProfiles.cend(), [&routed](const auto &known) { return known->id == routed->id; })) continue;
+                    extraCoreProfiles.append(routed);
+                }
             }
             ctx.preparedTransports = extraCoreProfiles;
             for (const auto &extraCoreEnt : extraCoreProfiles) {
@@ -1188,6 +1201,8 @@ namespace Configs {
             QJsonArray rules;
             // Merged in front of `rules` at the end; the tailscale block below prepends.
             QJsonArray headRules;
+            // The emitted remote resolver, cloned per route chain for the application rules below.
+            QJsonObject remoteBase;
             if (!ctx.forTest) {
                 // The authenticated SSTP bridge resolves this alias using only negotiated VPN resolvers.
                 auto remoteDnsObj = ctx.sstpDnsTag.isEmpty()
@@ -1203,6 +1218,7 @@ namespace Configs {
                 remoteDnsObj["domain_resolver"] = tags::dnsLocal;
                 remoteDnsObj["detour"] = ctx.sstpDnsTag.isEmpty() ? QString(tags::proxy) : ctx.sstpDnsTag;
                 servers += remoteDnsObj;
+                if (ctx.sstpDnsTag.isEmpty()) remoteBase = remoteDnsObj;
 
                 if (isTailscale)
                 {
@@ -1350,6 +1366,47 @@ namespace Configs {
                      {"server", tags::dnsFake}
                 };
                 independentCache = true;
+            }
+
+            // An application's rule routes its connections through another chain: the destination is resolved through
+            // that chain too, or it gets the address the main exit sees. Behind fakeip, which the core skips for a
+            // connection's own lookup, so applications keep their fake answers; ahead of the site lists, as the route wins.
+            if (!ctx.forTest && !remoteBase.isEmpty()) {
+                const auto route = ctx.route ? ctx.route : dataManager->routesRepo->GetRouteProfile(settings.current_route_id);
+                const auto &outboundMap = ctx.prerequisites.routing.outboundMap;
+                const auto routingRules = route == nullptr ? QJsonArray()
+                    : route->isRaw ? RouteProfile::TranslateRawOutbounds(QString2QJsonObject(route->rawRoute), outboundMap).value("rules").toArray()
+                                   : route->get_route_rules(false, outboundMap);
+                static const QStringList appKeys{"process_name", "process_path", "process_path_regex", "package_name"};
+                QSet<QString> serverTags;
+                for (const auto &entry : routingRules) {
+                    const auto rule = entry.toObject();
+                    const QString action = rule.value("action").toString("route");
+                    const QString outbound = rule.value("outbound").toString();
+                    if (action != "route" || outbound.isEmpty() || outbound == tags::proxy || rule.value("invert").toBool()) continue;
+                    // Only a rule made of applications alone: other conditions do not describe a DNS query.
+                    QJsonObject match;
+                    bool appsOnly = true;
+                    for (auto it = rule.constBegin(); it != rule.constEnd(); ++it) {
+                        if (appKeys.contains(it.key())) match[it.key()] = it.value();
+                        else if (it.key() != "action" && it.key() != "outbound" && it.key() != "name") appsOnly = false;
+                    }
+                    if (match.isEmpty() || !appsOnly) continue;
+                    QString server = tags::dnsDirect;
+                    if (outbound != tags::direct) {
+                        server = QStringLiteral("dns-remote-") + outbound;
+                        if (!serverTags.contains(server)) {
+                            auto clone = remoteBase;
+                            clone["tag"] = server;
+                            clone["detour"] = outbound;
+                            servers += clone;
+                            serverTags << server;
+                        }
+                    }
+                    match["action"] = "route";
+                    match["server"] = server;
+                    rules += match;
+                }
             }
 
             if (dns.needDirectDnsRules) {
@@ -2335,7 +2392,7 @@ namespace Configs {
                 if (routeGroup.chainWrapper != nullptr && grew) {
                     ctx.result->chainGroups.last().profiles.append(routeGroup.chainWrapper);
                 }
-                const auto named = routeGroup.chainWrapper != nullptr ? routeGroup.chainWrapper : getProfile(routeGroup.hopIDs.first());
+                const auto named = routeGroup.picked != nullptr ? routeGroup.picked : getProfile(routeGroup.hopIDs.first());
                 if (named != nullptr) ctx.result->outboundNames.insert(tag, profileDisplayName(named));
                 if (named != nullptr && grew) {
                     auto &chainGroup = ctx.result->chainGroups.last();
