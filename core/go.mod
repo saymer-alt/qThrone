@@ -22,14 +22,15 @@ require (
 	github.com/zalando/go-keyring v0.2.6
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.61.1-0.20261013155913-7e562009b388
 	golang.org/x/sys v0.49.0
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
 
 replace github.com/xtls/xray-core => github.com/throneproj/xray-core v1.251015.1-0.20261101081745-1c6eb7771c4d
 
-replace github.com/sagernet/sing-box => github.com/throneproj/sing-box v1.11.16-0.20261103115359-f25a530dc468
+replace github.com/sagernet/sing-box => github.com/throneproj/sing-box v1.11.16-0.20261110221151-acec9c0d0728
 
 replace github.com/sagernet/wireguard-go => github.com/throneproj/wireguard-go v0.0.0-20261031210827-e11787583013
 
@@ -220,7 +221,6 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb // indirect
 	golang.zx2c4.com/wireguard/windows v1.1.1 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
-	google.golang.org/grpc v1.84.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	layeh.com/gopher-luar v1.0.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
