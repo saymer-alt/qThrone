@@ -826,7 +826,8 @@ void TestRunner::runSpeedProbe(const Target& target)
             MW_show_log(MainWindowTr::tr("[%1] speed test error: %2").arg(ent->outbound->DisplayTypeAndName(), error));
         }
         Configs::dataManager->profilesRepo->Save(ent);
-        runOnUiThread([this, entid] { observer_->testStateChanged({entid}, 0); });
+        // The row still holds what the live updates left (the first profile's often without its country): it rereads the saved result.
+        runOnUiThread([this, entid] { observer_->testedProfilesChanged({entid}); observer_->testStateChanged({entid}, 0); });
     }
 }
 } // namespace Engine
