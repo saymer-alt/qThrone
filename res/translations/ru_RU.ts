@@ -351,6 +351,14 @@ It stays a preference, not a lock: if that profile stops working the selector st
 <context>
     <name>DialogBasicSettings</name>
     <message>
+        <source>Allow other devices to connect</source>
+        <translation>Разрешить подключение других устройств</translation>
+    </message>
+    <message>
+        <source>Lets other devices on your network use this DNS server, for example a router that sends its DNS through this computer. Anyone who can reach this port can then resolve names through your DNS settings.</source>
+        <translation>Позволяет другим устройствам в сети пользоваться этим DNS-сервером, например роутеру, который отправляет DNS через этот компьютер. Любой, кто может достучаться до этого порта, сможет разрешать имена через ваши настройки DNS.</translation>
+    </message>
+    <message>
         <source>Rawline OLED</source>
         <translation>Rawline OLED</translation>
     </message>
