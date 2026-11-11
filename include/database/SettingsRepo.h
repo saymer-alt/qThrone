@@ -108,7 +108,7 @@ namespace Configs {
         int h2_max_concurrent_streams = 0;
         int quic_initial_packet_size = 0;
         bool quic_disable_path_mtu_discovery = false;
-        QString theme = "0";
+        QString theme = "NewOLED";
         QString seasonal_decoration = "auto";
         bool seasonal_auto_13_migrated = false;
         bool dns_optimistic_164_migrated = false;

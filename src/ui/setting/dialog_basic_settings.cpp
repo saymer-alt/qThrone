@@ -364,9 +364,9 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->theme->addItem("QDarkStyle");
     // Custom stylesheet themes, not QStyleFactory keys.
     ui->theme->addItems({"FlatGray", "LightBlue", "SoftPink", "BlackSoft"});
-    // The new interface: the mobile app's look, in its two themes.
-    ui->theme->addItem(tr("Rawline OLED"), QString::fromLatin1(NewStyle::OledTheme));
-    ui->theme->addItem(tr("Rawline White"), QString::fromLatin1(NewStyle::WhiteTheme));
+    // The new interface: the mobile app's look, in its two themes, first in the list.
+    ui->theme->insertItem(0, tr("Rawline OLED"), QString::fromLatin1(NewStyle::OledTheme));
+    ui->theme->insertItem(1, tr("Rawline White"), QString::fromLatin1(NewStyle::WhiteTheme));
     ui->enable_custom_icon->setChecked(Configs::dataManager->settingsRepo->use_custom_icons);
     ui->follow_status_in_taskbar->setChecked(Configs::dataManager->settingsRepo->follow_status_in_taskbar);
     ui->follow_status_in_taskbar->setEnabled(ui->enable_custom_icon->isChecked());

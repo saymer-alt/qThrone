@@ -25,7 +25,10 @@ protected:
     }
 private:
     void reposition() {
-        const int width=qMax(120,qMin(360,parentWidget()->width()-24));
+        const int limit=qMax(120,qMin(360,parentWidget()->width()-24));
+        document()->setTextWidth(limit-28);
+        // No wider than its text: a short notice does not leave an empty field beside it.
+        const int width=qMax(120,qMin(limit,qCeil(document()->idealWidth())+28));
         document()->setTextWidth(width-28);
         const int height=qCeil(document()->size().height())+28;
         int bottom = 12;

@@ -73,9 +73,10 @@ void MainWindow::UpdateDataView(bool force)
     }
     auto html = dataViewHtmlGenerator_.buildHtml();
     runOnUiThread([=, this] {
-        auto *toast = ui->centralwidget->findChild<QTextBrowser *>("restartNotice");
+        // Over whichever interface is shown: the classic page is hidden under the new one.
+        auto *toast = centralWidget()->findChild<QTextBrowser *>("restartNotice");
         if (!toast) {
-            toast = new RestartNotice(ui->centralwidget);
+            toast = new RestartNotice(centralWidget());
             toast->setFont(ui->data_view->font());
             connect(toast, &QTextBrowser::anchorClicked, ui->data_view, &QTextBrowser::anchorClicked);
         }
@@ -162,8 +163,8 @@ void MainWindow::setDownloadReport(const DownloadProgressReport& report, bool sh
 
 void MainWindow::showNotice(const QString &message, int durationMs) {
     runOnUiThread([this, message, durationMs] {
-        if (auto *old = ui->centralwidget->findChild<QTextBrowser *>("transientNotice")) delete old;
-        auto *notice = new RestartNotice(ui->centralwidget);
+        if (auto *old = centralWidget()->findChild<QTextBrowser *>("transientNotice")) delete old;
+        auto *notice = new RestartNotice(centralWidget());
         notice->setObjectName("transientNotice");
         notice->setFont(ui->data_view->font());
         notice->present(message.toHtmlEscaped());

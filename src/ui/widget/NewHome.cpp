@@ -18,6 +18,15 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QMenuBar>
+#include <QStyledItemDelegate>
+#include <QGroupBox>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QPlainTextEdit>
+#include <QTextEdit>
+#include <QTabWidget>
+#include <QSpinBox>
+#include <QFocusEvent>
 #include <QSlider>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -178,12 +187,95 @@ namespace {
 
     // In the new style every control that acts gets the system's pointing hand; the classic one keeps the arrow.
     void giveHand(QWidget *widget) {
+        // A list's own rows ignore the sheet and draw a square frame; styled rows follow it.
+        if (auto *combo = qobject_cast<QComboBox *>(widget); combo && combo->itemDelegate()->inherits("QComboBoxDelegate")) {
+            combo->setItemDelegate(new QStyledItemDelegate(combo));
+        }
         if (widget->testAttribute(Qt::WA_SetCursor)) return;
         if (qobject_cast<QAbstractButton *>(widget) || qobject_cast<QComboBox *>(widget) || qobject_cast<QTabBar *>(widget) ||
             qobject_cast<QMenu *>(widget) || qobject_cast<QMenuBar *>(widget) || qobject_cast<QSlider *>(widget)) {
             widget->setCursor(Qt::PointingHandCursor);
             widget->setProperty("newHand", true);
         }
+    }
+
+    // A stylesheet draws a round border in pieces that do not join cleanly, so the sheet keeps the border clear
+    // and each control gets its outline here, as one smooth stroke over what it painted.
+    bool g_keyFocus = false;
+
+    bool outlined(const QWidget *w) {
+        return qobject_cast<const QPushButton *>(w) || qobject_cast<const QLineEdit *>(w) || qobject_cast<const QComboBox *>(w) ||
+               qobject_cast<const QAbstractSpinBox *>(w) || qobject_cast<const QPlainTextEdit *>(w) || qobject_cast<const QTextEdit *>(w) ||
+               qobject_cast<const QGroupBox *>(w) || qobject_cast<const QProgressBar *>(w) || qobject_cast<const QMenu *>(w) ||
+               qobject_cast<const QTabBar *>(w) || qobject_cast<const QTabWidget *>(w);
+    }
+
+    void paintOutline(QWidget *w) {
+        if (w->styleSheet().contains(QLatin1String("border"))) return;
+        const QColor ink = NewStyle::text();
+        const QColor rim = NewStyle::light() ? QColor(0, 0, 0, 22) : QColor(255, 255, 255, 26);
+        const QColor lit = withAlpha(ink, 120);
+        QPainter p(w);
+        p.setRenderHint(QPainter::Antialiasing);
+        if (!w->isEnabled()) p.setOpacity(.5);
+        const auto stroke = [&p](QRectF r, qreal radius, const QColor &colour) {
+            r.adjust(.5, .5, -.5, -.5);
+            radius = std::min(radius, std::min(r.width(), r.height()) / 2);
+            p.setPen(QPen(colour, 1.35));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(r, radius, radius);
+        };
+        const auto arrow = [&p, &ink](QPointF c, bool up) {
+            const qreal d = up ? -1.75 : 1.75;
+            p.setPen(QPen(withAlpha(ink, 200), 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            p.drawPolyline(QPolygonF{c + QPointF(-3.5, -d), c + QPointF(0, d), c + QPointF(3.5, -d)});
+        };
+        const auto *focus = QApplication::focusWidget();
+        const QColor field = focus && (focus == w || w->isAncestorOf(focus)) ? lit : rim;
+        const QRectF r = w->rect();
+        if (auto *button = qobject_cast<QPushButton *>(w)) {
+            if (!button->isFlat()) stroke(r, 14, button->isDefault() ? lit : rim);
+        } else if (qobject_cast<QLineEdit *>(w)) {
+            // The field inside a spin box or an editable list is part of that control.
+            if (!qobject_cast<QAbstractSpinBox *>(w->parentWidget()) && !qobject_cast<QComboBox *>(w->parentWidget())) stroke(r, 12, field);
+        } else if (qobject_cast<QComboBox *>(w)) {
+            stroke(r, 12, field);
+            arrow(QPointF(r.right() - 14, r.center().y()), false);
+        } else if (auto *spin = qobject_cast<QAbstractSpinBox *>(w)) {
+            stroke(r, 12, field);
+            if (spin->buttonSymbols() != QAbstractSpinBox::NoButtons) {
+                arrow(QPointF(r.right() - 13, r.center().y() - 5), true);
+                arrow(QPointF(r.right() - 13, r.center().y() + 5), false);
+            }
+        } else if (qobject_cast<QPlainTextEdit *>(w) || qobject_cast<QTextEdit *>(w)) {
+            stroke(r, 12, field);
+        } else if (qobject_cast<QGroupBox *>(w)) {
+            stroke(r.adjusted(0, 14, 0, 0), 18, rim);
+        } else if (qobject_cast<QProgressBar *>(w)) {
+            stroke(r, 8, rim);
+        } else if (qobject_cast<QMenu *>(w)) {
+            stroke(r, 16, NewStyle::outline());
+        } else if (auto *bar = qobject_cast<QTabBar *>(w)) {
+            for (int i = 0; i < bar->count(); ++i) {
+                if (bar->isTabVisible(i)) stroke(QRectF(bar->tabRect(i)).adjusted(2, 2, -2, -2), 12, i == bar->currentIndex() ? withAlpha(ink, 90) : rim);
+            }
+        } else if (auto *tabs = qobject_cast<QTabWidget *>(w)) {
+            if (tabs->documentMode() || tabs->objectName() == QLatin1String("stats_widget")) return;
+            QRectF pane = r;
+            if (const auto *strip = tabs->tabBar(); strip->isVisible()) {
+                if (tabs->tabPosition() == QTabWidget::North) pane.setTop(strip->geometry().bottom() + 1);
+                else if (tabs->tabPosition() == QTabWidget::South) pane.setBottom(strip->geometry().top());
+                else return;
+            }
+            stroke(pane, 18, rim);
+        }
+    }
+
+    // A menu's round corners show only on a window without a background or a shadow of its own.
+    void clearMenuWindow(QMenu *menu) {
+        if (menu->testAttribute(Qt::WA_TranslucentBackground)) return;
+        menu->setAttribute(Qt::WA_TranslucentBackground);
+        menu->setWindowFlag(Qt::NoDropShadowWindowHint);
     }
 
     // A menu gets round corners, which a stylesheet radius only shows on a window without a background of its own;
@@ -195,18 +287,29 @@ namespace {
         bool eventFilter(QObject *watched, QEvent *event) override {
             if (!NewStyle::active() || !watched->isWidgetType()) return false;
             auto *widget = static_cast<QWidget *>(watched);
-            if (event->type() == QEvent::Polish) {
+            if (event->type() == QEvent::Paint) {
+                if (m_painting || !outlined(widget)) return false;
+                // The control paints itself first; the outline goes over it within the same paint.
+                m_painting = true;
+                watched->event(event);
+                paintOutline(widget);
+                m_painting = false;
+                return true;
+            }
+            if (event->type() == QEvent::FocusIn) {
+                const auto reason = static_cast<QFocusEvent *>(event)->reason();
+                g_keyFocus = reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason || reason == Qt::ShortcutFocusReason;
+            } else if (event->type() == QEvent::Polish) {
                 giveHand(widget);
-                if (auto *menu = qobject_cast<QMenu *>(watched); menu && !menu->testAttribute(Qt::WA_TranslucentBackground)) {
-                    menu->setAttribute(Qt::WA_TranslucentBackground);
-                    menu->setWindowFlag(Qt::NoDropShadowWindowHint);
-                }
+                if (auto *menu = qobject_cast<QMenu *>(watched)) clearMenuWindow(menu);
             } else if (event->type() == QEvent::Show && widget->isWindow() &&
                        (widget->inherits("QComboBoxPrivateContainer") || widget->inherits("QTipLabel"))) {
                 NewStyle::roundCorners(widget, true);
             }
             return false;
         }
+    private:
+        bool m_painting = false;
     };
 
     // A second press on the button that opened a popup closes it, rather than closing and opening it again.
@@ -335,7 +438,11 @@ void NewStyle::setTheme(const QString &theme) {
     const bool entering = !isTheme(g_theme) && isTheme(theme);
     g_theme = theme;
     // Controls made before the switch are polished already.
-    if (entering) for (auto *widget : QApplication::allWidgets()) giveHand(widget);
+    if (entering) for (auto *widget : QApplication::allWidgets()) {
+        giveHand(widget);
+        // A menu shown under the classic look keeps its window; one not shown yet is cleared before it is.
+        if (auto *menu = qobject_cast<QMenu *>(widget); menu && !menu->isVisible()) clearMenuWindow(menu);
+    }
 }
 
 bool NewStyle::active() { return isTheme(g_theme); }
@@ -417,30 +524,31 @@ QString NewStyle::styleSheet() {
     return QStringLiteral(
         "QMainWindow, QDialog { background: %1; }\n"
         "QToolTip { background: %2; color: %3; border: 1px solid %4; padding: 6px 10px; }\n"
-        "QMenu { background: %5; border: 1px solid %4; border-radius: 16px; padding: 6px; }\n"
-        "QMenu::item { padding: 7px 18px 7px 14px; border-radius: 12px; background: transparent; color: %3; }\n"
+        "QMenu { background: %5; border: 1px solid transparent; border-radius: 16px; padding: 6px; }\n"
+        "QMenu::item { padding: 7px 26px 7px 14px; border-radius: 12px; background: transparent; color: %3; }\n"
         "QMenu::item:selected { background: %6; }\n"
         "QMenu::item:disabled { color: %7; }\n"
         "QMenu::separator { height: 1px; background: %4; margin: 5px 10px; }\n"
         "QMenu::icon { padding-left: 6px; }\n"
-        "QPushButton { background: %8; border: 1px solid %9; border-radius: 14px; padding: 7px 16px; color: %3; }\n"
+        "QPushButton { background: %8; border: 1px solid transparent; border-radius: 14px; padding: 7px 16px; color: %3; }\n"
         "QPushButton:hover { background: %6; }\n"
         "QPushButton:pressed { background: %10; }\n"
         "QPushButton:disabled { color: %7; }\n"
-        "QPushButton:default { border: 1px solid %11; }\n"
         "QToolButton { background: transparent; border: none; border-radius: 10px; padding: 4px; }\n"
         "QToolButton:hover { background: %6; }\n"
         "QToolButton:checked, QToolButton:pressed { background: %10; }\n"
-        "QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox, QComboBox, QKeySequenceEdit { background: %12; border: 1px solid %9; border-radius: 12px; padding: 5px 10px; selection-background-color: %13; selection-color: %3; }\n"
-        "QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QAbstractSpinBox:focus, QComboBox:focus { border: 1px solid %11; }\n"
+        "QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox, QComboBox, QKeySequenceEdit { background: %12; border: 1px solid transparent; border-radius: 12px; padding: 5px 10px; selection-background-color: %13; selection-color: %3; }\n"
+        "QAbstractSpinBox QLineEdit, QComboBox QLineEdit { background: transparent; border: none; border-radius: 0; padding: 0; }\n"
+        "QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { border: none; background: transparent; width: 20px; }\n"
+        "QAbstractSpinBox::up-arrow, QAbstractSpinBox::down-arrow, QComboBox::down-arrow { image: none; width: 0; height: 0; }\n"
         "QComboBox::drop-down { border: none; width: 22px; }\n"
         "QComboBox QAbstractItemView { background: %2; border: none; selection-background-color: %6; outline: 0; padding: 4px; }\n"
-        "QComboBox QAbstractItemView::item, QListView::item { min-height: 26px; padding: 2px 8px; border-radius: 8px; border: none; color: %3; }\n"
-        "QComboBox QAbstractItemView::item:hover, QListView::item:hover { background: %6; }\n"
-        "QComboBox QAbstractItemView::item:selected, QListView::item:selected { background: %13; color: %3; }\n"
-        "QTabWidget::pane { border: 1px solid %9; border-radius: 18px; background: transparent; top: -1px; }\n"
-        "QTabBar::tab { background: transparent; border: 1px solid %9; border-radius: 12px; padding: 5px 11px; margin: 2px 2px; color: %7; }\n"
-        "QTabBar::tab:selected { background: %13; color: %3; border: 1px solid %14; }\n"
+        "QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; border-radius: 8px; border: none; color: %3; }\n"
+        "QComboBox QAbstractItemView::item:hover { background: %6; }\n"
+        "QComboBox QAbstractItemView::item:selected { background: %13; color: %3; }\n"
+        "QTabWidget::pane { border: 1px solid transparent; border-radius: 18px; background: transparent; }\n"
+        "QTabBar::tab { background: transparent; border: 1px solid transparent; border-radius: 12px; padding: 5px 11px; margin: 2px 2px; color: %7; }\n"
+        "QTabBar::tab:selected { background: %13; color: %3; }\n"
         "QTabBar::tab:hover:!selected { background: %6; }\n"
         "QHeaderView { background: transparent; }\n"
         "QHeaderView::section { background: transparent; border: none; border-bottom: 1px solid %4; padding: 6px; color: %7; }\n"
@@ -452,9 +560,9 @@ QString NewStyle::styleSheet() {
         "QScrollBar::handle:horizontal { background: %15; border-radius: 3px; min-width: 30px; margin: 2px 0; }\n"
         "QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }\n"
         "QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }\n"
-        "QGroupBox { border: 1px solid %9; border-radius: 18px; margin-top: 14px; padding-top: 8px; }\n"
+        "QGroupBox { border: 1px solid transparent; border-radius: 18px; margin-top: 14px; padding-top: 8px; }\n"
         "QGroupBox::title { subcontrol-origin: margin; left: 14px; padding: 0 4px; color: %7; }\n"
-        "QProgressBar { background: %12; border: 1px solid %9; border-radius: 8px; text-align: center; }\n"
+        "QProgressBar { background: %12; border: 1px solid transparent; border-radius: 8px; text-align: center; }\n"
         "QProgressBar::chunk { background: %14; border-radius: 7px; }\n"
         "QSplitter::handle { background: transparent; }\n"
         "#stats_widget::pane { border: none; }\n"
@@ -658,8 +766,9 @@ void NewTile::paintEvent(QPaintEvent *) {
     const qreal radius = m_kind == Icon && m_flat ? r.height() / 2 : 20;
     if (!m_flat) NewStyle::paintGlass(p, r, radius, m_selected ? NewStyle::text() : QColor());
     const int lift = (m_hover && isEnabled() ? 12 : 0) + qRound(m_press * 40);
-    if (lift > 0 || hasFocus()) {
-        p.setPen(hasFocus() && !m_hover ? QPen(NewStyle::text(), 1.5) : Qt::NoPen);
+    const bool ring = hasFocus() && g_keyFocus;
+    if (lift > 0 || ring) {
+        p.setPen(ring && !m_hover ? QPen(NewStyle::text(), 1.5) : Qt::NoPen);
         p.setBrush(NewStyle::overlay(lift));
         const qreal c = std::min(radius, r.height() / 2);
         if (m_flat) p.drawEllipse(r.center(), std::min(r.width(), r.height()) / 2 - 2, std::min(r.width(), r.height()) / 2 - 2);
@@ -743,8 +852,9 @@ void NewSwitch::paintEvent(QPaintEvent *) {
     p.setRenderHint(QPainter::Antialiasing);
     const QRectF r = rect();
     NewStyle::paintGlass(p, r, 20);
-    if (m_hover || isDown() || hasFocus()) {
-        p.setPen(hasFocus() && !m_hover ? QPen(NewStyle::text(), 1.5) : Qt::NoPen);
+    const bool ring = hasFocus() && g_keyFocus;
+    if (m_hover || isDown() || ring) {
+        p.setPen(ring && !m_hover ? QPen(NewStyle::text(), 1.5) : Qt::NoPen);
         p.setBrush(NewStyle::overlay(isDown() ? 40 : 12));
         p.drawRoundedRect(r.adjusted(.5, .5, -.5, -.5), 20, 20);
     }
@@ -901,7 +1011,7 @@ void NewOrb::paintEvent(QPaintEvent *) {
     p.setBrush(Qt::NoBrush);
     p.setPen(QPen(QBrush(rim), 1.2));
     p.drawPath(edge);
-    if (hasFocus()) {
+    if (hasFocus() && g_keyFocus) {
         p.setPen(QPen(ink, 2));
         p.drawEllipse(QPointF(cx, cy), base * 1.2, base * 1.2);
     }
@@ -984,14 +1094,20 @@ namespace {
     // A glass card: the notice above the list and the log, connections and traffic pages.
     class GlassCard : public QWidget {
     public:
-        explicit GlassCard(qreal radius, QWidget *parent = nullptr) : QWidget(parent), m_radius(radius) {}
+        explicit GlassCard(qreal radius, bool plain = false, QWidget *parent = nullptr) : QWidget(parent), m_radius(radius), m_plain(plain) {}
     protected:
         void paintEvent(QPaintEvent *) override {
             QPainter p(this);
-            NewStyle::paintGlass(p, rect(), m_radius);
+            if (!m_plain) { NewStyle::paintGlass(p, rect(), m_radius); return; }
+            // The pages inside paint the window's own ground, so the card takes it too and shows no square within.
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(QPen(NewStyle::light() ? QColor(0, 0, 0, 22) : QColor(255, 255, 255, 26), 1.35));
+            p.setBrush(NewStyle::background());
+            p.drawRoundedRect(QRectF(rect()).adjusted(.5, .5, -.5, -.5), m_radius, m_radius);
         }
     private:
         qreal m_radius;
+        bool m_plain;
     };
 
     // The subscriptions sheet: switch between them, add one or manage them.
@@ -1132,15 +1248,22 @@ void NewProfileDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, 
     const int testState = index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(ProfilesTableModel::TestStateRole).toInt();
     p->setFont(NewStyle::font(12));
     const int resultWidth = std::clamp(p->fontMetrics().horizontalAdvance(result) + 12, 62, 200);
-    const QRectF resultBox(chevron.left() - resultWidth, row.center().y() - 16, resultWidth, 32);
+    QRectF resultBox(chevron.left() - resultWidth, row.center().y() - 16, resultWidth, 32);
     const bool measuring = testState == 2 && index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(ProfilesTableModel::TestCountryRole).toString().isEmpty();
     if (testState == 1) {
         p->setPen(QPen(ink, 2, Qt::SolidLine, Qt::RoundCap));
         p->setBrush(Qt::NoBrush);
         const QRectF spin(resultBox.center().x() - 9, resultBox.center().y() - 9, 18, 18);
         p->drawArc(spin, int(-spinAngle * 16), 270 * 16);
-    } else if (measuring) {
-        // The speed test: a gauge whose needle sweeps, as the classic table and the mobile rows show it.
+    }
+    if (testState != 1 && !result.isEmpty()) {
+        const QVariant colour = index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(Qt::ForegroundRole);
+        p->setPen(colour.isValid() ? colour.value<QColor>() : dim);
+        p->drawText(resultBox, Qt::AlignCenter, p->fontMetrics().elidedText(result, Qt::ElideRight, int(resultBox.width())));
+    }
+    if (measuring) {
+        // The speed test: a gauge whose needle sweeps, beside the latency the row already shows.
+        if (!result.isEmpty()) resultBox = QRectF(resultBox.left() - 30, resultBox.top(), 30, resultBox.height());
         const QPointF c(resultBox.center().x(), resultBox.center().y() + 3);
         const qreal r = 10;
         p->setBrush(Qt::NoBrush);
@@ -1154,10 +1277,6 @@ void NewProfileDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, 
         p->setPen(Qt::NoPen);
         p->setBrush(ink);
         p->drawEllipse(c, 2, 2);
-    } else if (!result.isEmpty()) {
-        const QVariant colour = index.siblingAtColumn(ProfilesTableModel::ColTestResult).data(Qt::ForegroundRole);
-        p->setPen(colour.isValid() ? colour.value<QColor>() : dim);
-        p->drawText(resultBox, Qt::AlignCenter, p->fontMetrics().elidedText(result, Qt::ElideRight, int(resultBox.width())));
     }
     const qreal textLeft = badge.right() + 10;
     const qreal textRight = resultBox.left() - 4;
@@ -1565,7 +1684,7 @@ void NewHome::buildBody(QVBoxLayout *body) {
     serversLayout->addWidget(m_empty);
     m_pages->addWidget(servers);
 
-    auto *stats = new GlassCard(28);
+    auto *stats = new GlassCard(28, true);
     m_statsLayout = new QVBoxLayout(stats);
     m_statsLayout->setContentsMargins(10, 10, 10, 10);
     m_pages->addWidget(stats);
@@ -1750,7 +1869,8 @@ void NewHome::refresh() {
     m_check->setVisible(connected);
 
     const QString runningText = mw->ui->label_running->text();
-    if (!runningText.startsWith(QCoreApplication::translate("MainWindow", "Test Result") + QStringLiteral(": ")) && m_running->text() != runningText) {
+    if (!runningText.startsWith(QCoreApplication::translate("MainWindow", "Test Result") + QStringLiteral(": ")) &&
+        runningText != QCoreApplication::translate("MainWindow", "Testing") && m_running->text() != runningText) {
         m_running->setText(runningText);
     }
     if (m_inbound->text() != mw->ui->label_inbound->text()) m_inbound->setText(mw->ui->label_inbound->text());

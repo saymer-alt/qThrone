@@ -344,6 +344,7 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
     const bool enteringNew = NewStyle::isTheme(theme);
     const bool leavingCustom = palettes.contains(current_theme.toLower()) || leavingNew;
     const bool enteringCustom = palettes.contains(lowerTheme);
+    const QColor newGround = leavingNew ? NewStyle::background() : QColor();
     NewStyle::setTheme(theme);
 
     QString themeSheet;
@@ -380,6 +381,13 @@ void ThemeManager::ApplyTheme(const QString &theme, bool force) {
         }
         const QString styleName = lowerTheme == "system" ? system_style_name : theme;
         qApp->setStyle(styleName);
+        // The new look's ground must not outlive it: if the palette did not come back, the saved one goes on whole.
+        if (leavingNew && qApp->palette().color(QPalette::Active, QPalette::Window) == newGround &&
+            system_palette.color(QPalette::Active, QPalette::Window) != newGround) {
+            QPalette whole = system_palette;
+            whole.setResolveMask(~QPalette::ResolveMask(0));
+            qApp->setPalette(whole);
+        }
         windows11Tabs = styleName.compare(QStringLiteral("windows11"), Qt::CaseInsensitive) == 0;
         macosPane = styleName.compare(QStringLiteral("macos"), Qt::CaseInsensitive) == 0;
     }
