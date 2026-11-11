@@ -3147,8 +3147,18 @@ namespace Configs {
                 ctx.route = Subscription::ProviderRouting::Profile(ctx.providerRouting, options.routing_provider);
                 if (ent->outbound->IsXrayFullConfig()) {
                     ctx.route = RouteProfile::GetDefaultChain();
-                } else ctx.error = Subscription::ProviderRouting::ResolveGeo(*ctx.route, ctx.providerRouting);
-                if (!ctx.error.isEmpty()) { ctx.result->error = ctx.error; return ctx.result; }
+                } else if (ctx.route) ctx.error = Subscription::ProviderRouting::ResolveGeo(*ctx.route, ctx.providerRouting);
+                if (!ctx.route || !ctx.error.isEmpty()) {
+                    // A provider profile that cannot be used must not cost the connection: the subscription's own
+                    // routing goes off and the client's routing takes over, as when it was never enabled.
+                    MW_show_log(QObject::tr("The Happ / Incy routing of \"%1\" is unavailable (%2) and was turned off; the client's routing is used.")
+                                    .arg(group->name, ctx.error.isEmpty() ? QStringLiteral("no profile") : ctx.error));
+                    group->sub_options.provider_routing_enabled = false;
+                    dataManager->groupsRepo->Save(group);
+                    ctx.error.clear();
+                    ctx.route = nullptr;
+                    ctx.providerRouting = {};
+                }
             }
         }
         if (!ctx.route) {

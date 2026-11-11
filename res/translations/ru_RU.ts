@@ -10038,6 +10038,10 @@ Name: %1</source>
 </context>
 <context>
     <name>QObject</name>
+    <message>
+        <source>The Happ / Incy routing of &quot;%1&quot; is unavailable (%2) and was turned off; the client&apos;s routing is used.</source>
+        <translation>Маршрутизация Happ / Incy подписки «%1» недоступна (%2) и отключена; используется маршрутизация клиента.</translation>
+    </message>
     <message><source>WireGuard WARP requires UDP, but this transport supports TCP only. Select MASQUE in WARP settings and generate its config.</source><translation>Для WireGuard WARP нужен UDP, а этот транспорт поддерживает только TCP. Выберите MASQUE в настройках WARP и сгенерируйте его конфиг.</translation></message>
     <message>
         <source>The selected TLS version is not supported on this system.</source>
