@@ -461,6 +461,18 @@ QString ResolveXrayGeo(const QJsonObject &document, QJsonObject &config) {
         QString source;
         if (const auto error = PrepareGeo(doc, kind, source); !error.isEmpty())
             return error;
+        {
+            // Xray finds a category only by its upper-case name in the entry's first field.
+            QProcess process;
+            process.start(Configs::FindCoreRealPath(), {"--xray-geo", source});
+            if (!process.waitForStarted(10000) || !process.waitForFinished(60000)) {
+                process.kill();
+                process.waitForFinished();
+                return QObject::tr("Geo conversion timed out.");
+            }
+            if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+                return QString::fromUtf8(process.readAllStandardError());
+        }
         QFile database(source);
         if (!database.open(QIODevice::ReadOnly) || !geoCategories(database, availableCategories[kind]))
             return QObject::tr("Invalid Geo database: %1").arg(GeoUrl(doc, kind));

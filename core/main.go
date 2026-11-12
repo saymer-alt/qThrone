@@ -190,6 +190,18 @@ func runAttached(attached elevation.Attached) {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--xray-geo" {
+		parentcheck.CheckParentProcess()
+		if err := relay.DropPrivileges(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := providergeo.NormalizeForXray(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--convert-geo" {
 		parentcheck.CheckParentProcess()
 		if err := relay.DropPrivileges(); err != nil {
