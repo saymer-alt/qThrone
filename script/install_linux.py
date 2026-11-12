@@ -284,7 +284,7 @@ Keywords=proxy;vpn;network;privacy;
             install(tmpdir / "Version", APPDIR / "Version", 0o644)
 
             y = message(scr, y, f"Installing binaries to {APPDIR}")
-            for name in ("RawlineCore", "Rawline", "qwdtt", "freeturn-client", "csqtt-transport", "csqtt-compat", "mrtt-transport", "openflux", "openfluxkey", "olcrtc", "dnstun", "masterdns", "cottendns", "soar", "s3bypass", "slipstream-client", "wdttplus-client", "RawlineUpdater"):
+            for name in ("RawlineCore", "Rawline", "qwdtt", "freeturn-client", "csqtt-transport", "csqtt-compat", "mrtt-transport", "openflux", "openfluxkey", "olcrtc", "dnstun", "masterdns", "cottendns", "soar", "s3bypass", "slipstream-client", "aivpn-client", "wdttplus-client", "RawlineUpdater"):
                 install(tmpdir / "Rawline" / name, APPDIR / name, 0o755)
             usr_src = tmpdir / "Rawline/usr"
             for f in usr_src.rglob("*"):
@@ -299,7 +299,7 @@ Keywords=proxy;vpn;network;privacy;
                          "VayDNS-LICENSE", "VayDNS-SOURCE", "vaydns-source.tar.gz", "MasterDnsVPN-LICENSE", "MasterDnsVPN-SOURCE", "masterdns-source.tar.gz",
                          "CottenDNS-LICENSE", "CottenDNS-SOURCE", "cottendns-source.tar.gz", "Soar-LICENSE", "Soar-SOURCE", "soar-source.tar.gz",
                          "OpenFluxKey-LICENSE", "OpenFluxKey-SOURCE", "openfluxkey-source.tar.gz",
-                         "Xray-fedarisha-LICENSE", "Xray-fedarisha-SOURCE", "fedarisha-source.tar.gz", "Slipstream-LICENSE", "Slipstream-SOURCE", "slipstream-source.tar.gz"):
+                         "Xray-fedarisha-LICENSE", "Xray-fedarisha-SOURCE", "fedarisha-source.tar.gz", "Slipstream-LICENSE", "Slipstream-SOURCE", "slipstream-source.tar.gz", "AIVPN-LICENSE", "AIVPN-SOURCE", "aivpn-source.tar.gz"):
                 install(tmpdir / "Rawline" / name, APPDIR / name, 0o644)
 
             y = message(scr, y, f"Installing .desktop to {DESKTOPDIR}")

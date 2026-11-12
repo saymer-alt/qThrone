@@ -200,6 +200,7 @@ namespace Subscription {
             {"cottendns", {}, {"cottendns"}, {}},
             {"soar", {}, {"soar"}, {}},
             {"s3bypass", {}, {"s3bypass"}, {}},
+            {"aivpn", {"aivpn://"}, {"aivpn"}, {}},
             {"sstp", {"sstp://"}, {"sstp"}, {}},
             {"freeturn", {"freeturn://"}, {"freeturn"}, {}},
             {"socks", {"socks5://", "socks4://", "socks4a://", "socks://"}, {"socks"}, {"socks5"}},

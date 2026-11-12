@@ -388,13 +388,17 @@ set(PROJECT_SOURCES
         src/ui/profile/edit_freeturn.cpp
         include/ui/profile/edit_freeturn.h
         src/configs/outbounds/s3bypass.cpp
+        src/configs/outbounds/aivpn.cpp
         include/configs/outbounds/s3bypass.h
+        include/configs/outbounds/aivpn.h
         src/configs/outbounds/native.cpp
         include/configs/outbounds/native.h
         src/ui/profile/edit_dnstunnel.cpp
         include/ui/profile/edit_dnstunnel.h
         src/ui/profile/edit_s3bypass.cpp
+        src/ui/profile/edit_aivpn.cpp
         include/ui/profile/edit_s3bypass.h
+        include/ui/profile/edit_aivpn.h
         src/configs/outbounds/openfluxkey.cpp
         include/configs/outbounds/openfluxkey.h
         src/ui/profile/edit_openfluxkey.cpp

@@ -1,6 +1,7 @@
 #include "include/configs/outbounds/aivpn.h"
 #include "include/global/Utils.hpp"
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
@@ -64,7 +65,7 @@ QJsonObject aivpn::ExportToJson() {
 
 QJsonObject aivpn::ExportIdentity() { auto o = ExportToJson(); o.remove("name"); return o; }
 
-QString aivpn::DisplayAddress() { return DisplayAddressOf(server, server_port); }
+QString aivpn::DisplayAddress() { return ::DisplayAddress(server, server_port); }
 
 QString aivpn::Validate() const {
     if (keyPayload(key).isEmpty()) return QStringLiteral("AIVPN: вставьте ключ подключения aivpn://…");
@@ -93,7 +94,12 @@ QString aivpn::Prepare() {
     socksPort = ports[0];
     adminPort = ports[1];
     bridgeAuth = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    QJsonObject config{{"key", key.trimmed()},
+    // backend, peer and device_id are read by RawlineCore: its startup budget and one probe per server session.
+    const auto payload = keyPayload(key);
+    QJsonObject config{{"backend", "aivpn"},
+                       {"peer", payload["s"].toString()},
+                       {"device_id", QString::fromLatin1(QCryptographicHash::hash(payload["k"].toString().toUtf8(), QCryptographicHash::Sha256).toHex())},
+                       {"key", key.trimmed()},
                        {"socks", "127.0.0.1:" + QString::number(socksPort)},
                        {"admin", "127.0.0.1:" + QString::number(adminPort)},
                        {"socks_user", bridgeAuth},

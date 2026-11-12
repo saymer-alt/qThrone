@@ -84,6 +84,8 @@ fn same(a: &[u8], b: &[u8]) -> bool {
             self.stream.write_all(&[SOCKS5_VER, METHOD_NO_AUTH]).await?;
         }
 ''')
+    # Only the TUN mode needs an administrator; the SOCKS mode Rawline runs starts as the core's own user.
+    replace_once(root / 'crates/aivpn-client/build.rs', 'level="requireAdministrator"', 'level="asInvoker"')
 
 
 if __name__ == '__main__':

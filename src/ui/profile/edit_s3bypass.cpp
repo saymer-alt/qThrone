@@ -4,13 +4,13 @@
 #include <QLabel>
 
 namespace {
-// The original app's tuning; both sides keep their own.
+// The original app's client tuning (its server side uses 20 ms, 300 s and 2 MB).
 struct Tuning { const char *key; const char *label; int minimum, maximum, value; };
 constexpr Tuning kTuning[] = {
     {"pollIntervalMs", "Опрос хранилища, мс", 1, 60000, 100},
-    {"writeIntervalMs", "Запись в хранилище, мс", 1, 60000, 20},
-    {"idleTimeoutSec", "Тайм-аут простоя, с", 1, 86400, 300},
-    {"maxFileSizeBytes", "Наибольший объект, байт", 1024, 1 << 30, 2097152},
+    {"writeIntervalMs", "Запись в хранилище, мс", 1, 60000, 80},
+    {"idleTimeoutSec", "Тайм-аут простоя, с", 1, 86400, 3600},
+    {"maxFileSizeBytes", "Наибольший объект, байт", 1024, 1 << 30, 16777216},
 };
 }
 

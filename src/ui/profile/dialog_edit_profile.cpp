@@ -17,6 +17,7 @@
 #include "include/ui/profile/edit_olcrtc.h"
 #include "include/ui/profile/edit_dnstunnel.h"
 #include "include/ui/profile/edit_s3bypass.h"
+#include "include/ui/profile/edit_aivpn.h"
 #include "include/ui/profile/edit_openfluxkey.h"
 #include "include/ui/profile/edit_sstp.h"
 #include "include/ui/profile/edit_freeturn.h"
@@ -84,6 +85,7 @@ EditorFactory editorFactory(const QString &type) {
         {"cottendns", makeEditor<EditDnsTunnel>},
         {"soar", makeEditor<EditDnsTunnel>},
         {"s3bypass", makeEditor<EditS3Bypass>},
+        {"aivpn", makeEditor<EditAivpn>},
         {"openfluxkey", makeEditor<EditOpenFluxKey>},
         {"sstp", makeEditor<EditSSTP>},
         {"freeturn", makeEditor<EditFreeTurn>},
@@ -283,7 +285,7 @@ void DialogEditProfile::setupTypeList() {
         // The two VLESS engines are picked here, so only this list names the engine.
         if (offered(t)) ui->type->addItem(t == "qwdtt" ? QStringLiteral("qWDTT") : t == "csqtt" ? QStringLiteral("CSQTT") : t == "mrtt" ? QStringLiteral("MRTT") : t == "wdttplus" ? QStringLiteral("WDTT Plus") : t == "freeturn" ? QStringLiteral("FreeTurn") : t == "xrayvless" ? QStringLiteral("VLESS (Xray)") : Configs::dataManager->profilesRepo->NewProfile(t)->outbound->DisplayType(), t);
     };
-    for (const auto *t: {"qwdtt", "csqtt", "mrtt", "wdttplus", "freeturn", "openflux", "openfluxkey", "olcrtc", "masterdns", "cottendns", "soar", "vaydns", "dnstt", "slipstream", "s3bypass", "sstp", "autoselector", "socks", "http", "shadowsocks", "shadowsocksr", "trojan", "vmess", "vless", "xrayvless",
+    for (const auto *t: {"qwdtt", "csqtt", "mrtt", "wdttplus", "freeturn", "openflux", "openfluxkey", "olcrtc", "masterdns", "cottendns", "soar", "vaydns", "dnstt", "slipstream", "s3bypass", "aivpn", "sstp", "autoselector", "socks", "http", "shadowsocks", "shadowsocksr", "trojan", "vmess", "vless", "xrayvless",
                          "hysteria", "tuic", "juicity", "naive", "trusttunnel", "anytls", "mieru", "snell",
                          "shadowtls", "wireguard", "masque", "openvpn", "openconnect", "tailscale", "ssh"}) {
         addType(t);

@@ -37,7 +37,8 @@ var transportKinds = map[string]transportKind{
 	"soar":        {executable: "soar", flag: "--rawline-config", probeStartup: 2 * time.Minute, connectStartup: 3 * time.Minute, quiet: true},
 	"openfluxkey": {executable: "openfluxkey", flag: "--rawline-config", probeStartup: 2 * time.Minute, connectStartup: 3 * time.Minute, quiet: true},
 	"s3bypass":    {executable: "s3bypass", flag: "--rawline-config", probeStartup: 2 * time.Minute, connectStartup: 3 * time.Minute, quiet: true},
+	"aivpn":       {executable: "aivpn-client", flag: "--rawline-config", probeStartup: time.Minute, connectStartup: 2 * time.Minute, quiet: true},
 }
 
 // tunnelHelpers are the bundled executables that may run as routed transports.
-var tunnelHelpers = map[string]bool{"qwdtt": true, "openflux": true, "openfluxkey": true, "olcrtc": true, "dnstun": true, "masterdns": true, "cottendns": true, "soar": true, "s3bypass": true, "sstp-client": true, "freeturn-client": true}
+var tunnelHelpers = map[string]bool{"qwdtt": true, "openflux": true, "openfluxkey": true, "olcrtc": true, "dnstun": true, "masterdns": true, "cottendns": true, "soar": true, "s3bypass": true, "aivpn-client": true, "sstp-client": true, "freeturn-client": true}

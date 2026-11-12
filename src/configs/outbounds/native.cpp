@@ -6,6 +6,7 @@
 #include "include/configs/outbounds/olcrtc.h"
 #include "include/configs/outbounds/dnstunnel.h"
 #include "include/configs/outbounds/s3bypass.h"
+#include "include/configs/outbounds/aivpn.h"
 #include "include/configs/outbounds/openfluxkey.h"
 #include "include/configs/outbounds/sstp.h"
 #include "include/configs/outbounds/freeturn.h"
@@ -14,7 +15,7 @@
 
 namespace Configs {
 bool IsNativeTransport(const QString &type) {
-    static const QSet<QString> types{"qwdtt", "csqtt", "mrtt", "wdttplus", "freeturn", "openflux", "openfluxkey", "olcrtc", "dnstt", "vaydns", "slipstream", "masterdns", "cottendns", "soar", "s3bypass", "sstp"};
+    static const QSet<QString> types{"qwdtt", "csqtt", "mrtt", "wdttplus", "freeturn", "openflux", "openfluxkey", "olcrtc", "dnstt", "vaydns", "slipstream", "masterdns", "cottendns", "soar", "s3bypass", "aivpn", "sstp"};
     return types.contains(type);
 }
 
@@ -24,7 +25,7 @@ bool IsTcpOnlyTransport(const QString &type) {
 }
 
 bool HasOwnServerFields(const QString &type) {
-    static const QSet<QString> types{"olcrtc", "dnstt", "vaydns", "slipstream", "masterdns", "cottendns", "soar", "s3bypass", "openfluxkey"};
+    static const QSet<QString> types{"olcrtc", "dnstt", "vaydns", "slipstream", "masterdns", "cottendns", "soar", "s3bypass", "aivpn", "openfluxkey"};
     return types.contains(type);
 }
 
@@ -36,6 +37,7 @@ QString PrepareNativeTransport(extracore *outbound) {
     if (auto *o = dynamic_cast<olcrtc *>(outbound)) return o->Prepare();
     if (auto *o = dynamic_cast<dnstunnel *>(outbound)) return o->Prepare();
     if (auto *o = dynamic_cast<s3bypass *>(outbound)) return o->Prepare();
+    if (auto *o = dynamic_cast<aivpn *>(outbound)) return o->Prepare();
     if (auto *o = dynamic_cast<openfluxkey *>(outbound)) return o->Prepare();
     if (auto *o = dynamic_cast<sstp *>(outbound)) return o->Prepare();
     if (auto *o = dynamic_cast<freeturn *>(outbound)) return o->Prepare();
