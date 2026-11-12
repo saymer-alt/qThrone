@@ -15,7 +15,8 @@ namespace Configs {
 class ProfilesTableModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum { ProfileIdRole = Qt::UserRole, TestStateRole, TestCountryRole, TestSinceRole };
+    // GeoCountryRole: the stored ISO code of the egress country from the last IP or speed test.
+    enum { ProfileIdRole = Qt::UserRole, TestStateRole, TestCountryRole, TestSinceRole, GeoCountryRole };
     void setTestState(const QList<int> &ids, int state, const QString &country = {}, const QString &text = {});
     // A repeated latency test starts the rows' spinners over.
     void restartTestAnimation(const QList<int> &ids);

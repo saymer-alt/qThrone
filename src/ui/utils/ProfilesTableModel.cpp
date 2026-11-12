@@ -119,6 +119,7 @@ QVariant ProfilesTableModel::data(const QModelIndex &index, int role) const {
     if (role == TestStateRole) return progress.first;
     if (role == TestCountryRole) return progress.second;
     if (role == TestSinceRole) return testSince.value(profileId);
+    if (role == GeoCountryRole) return profile->test_country;
 
     const int startedId = Configs::dataManager->settingsRepo->started_id;
     const bool isRunning = (profile->id == startedId);

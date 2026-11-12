@@ -1222,9 +1222,18 @@ void NewProfileDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, 
         p->drawRoundedRect(row.adjusted(.5, .5, -.5, -.5), 20, 20);
     }
     QString name = index.siblingAtColumn(ProfilesTableModel::ColName).data().toString().trimmed();
-    const QString leading = NewStyle::leadingFlag(name);
-    if (!leading.isEmpty()) name = name.mid(leading.size()).trimmed();
-    // The country flag, any flag at the start of the name, or a globe.
+    // Only a country flag leaves the name for the badge; a white or other flag stays in it.
+    QString leading = NewStyle::leadingFlag(name);
+    const auto leadingUcs = leading.toUcs4();
+    if (leadingUcs.size() == 2 && leadingUcs[0] >= 0x1F1E6 && leadingUcs[0] <= 0x1F1FF && leadingUcs[1] >= 0x1F1E6 && leadingUcs[1] <= 0x1F1FF)
+        name = name.mid(leading.size()).trimmed();
+    else leading.clear();
+    // The server's country from the tests' IP lookup, else the name's country flag, else a globe.
+    const QString geo = index.data(ProfilesTableModel::GeoCountryRole).toString().trimmed().toUpper();
+    if (geo.size() == 2 && geo[0] >= 'A' && geo[0] <= 'Z' && geo[1] >= 'A' && geo[1] <= 'Z') {
+        const char32_t indicators[] = {char32_t(0x1F1E6 + geo[0].unicode() - 'A'), char32_t(0x1F1E6 + geo[1].unicode() - 'A')};
+        leading = QString::fromUcs4(indicators, 2);
+    }
     const QRectF badge(row.left() + 10, row.center().y() - 14, 28, 28);
     const QPixmap flag = NewStyle::flag(leading, 28, p->device()->devicePixelRatioF());
     if (!flag.isNull()) {
