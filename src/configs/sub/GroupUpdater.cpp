@@ -1462,7 +1462,13 @@ namespace Subscription {
 
             QList<int> stale;
             QList<int> keptWorking;
-            for (int id : plan.stale) (working.contains(id) ? keptWorking : stale) << id;
+            // A working server is kept only while the provider sends nothing in its place: one of the same type and
+            // name in this refresh replaces it, or a provider that rotates its servers would pile up copies.
+            QSet<QString> arrivedNames;
+            for (const auto &entry : sink.entries) arrivedNames.insert(entry.display);
+            QHash<int, QString> oldNames;
+            for (const auto &entry : old) oldNames.insert(entry.id, entry.display);
+            for (int id : plan.stale) (working.contains(id) && !arrivedNames.contains(oldNames.value(id)) ? keptWorking : stale) << id;
 
             const auto previousOrder = group->profiles;
             group->profiles = plan.order;
