@@ -7,3 +7,4 @@
 *.db
 gen/*.pb.go
 gen/*.pb.*.go
+.rawline/

@@ -84,5 +84,7 @@ if [[ "$GOOS" == "darwin" ]]; then
   done
 fi
 VERSION_SINGBOX=$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)
+# sing-box's REALITY client keeps X25519MLKEM768, which REALITY servers since Xray 26.7 require.
+export GOFLAGS="$(GOCMD="$GOCMD" python3 ../script/reality_overlay.py)"
 $GOCMD build -v -o "$DEST/RawlineCore$([[ "$GOOS" == "windows" ]] && echo ".exe")" -trimpath -ldflags "-w -s -X 'github.com/sagernet/sing-box/constant.Version=${VERSION_SINGBOX}' -X 'internal/godebug.defaultGODEBUG=multipathtcp=0' -checklinkname=0" -tags "$TAGS"
 popd
