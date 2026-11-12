@@ -20,6 +20,13 @@ const QStringList &s3bypass::TuningKeys() {
     return keys;
 }
 
+QString s3bypass::Host(const QJsonObject &storage) {
+    const auto endpoint = storage["endpoint"].toString().trimmed();
+    if (!endpoint.isEmpty()) return QUrl(endpoint).host();
+    const auto region = storage["region"].toString().trimmed();
+    return region.isEmpty() ? QString() : "s3." + region + ".amazonaws.com";
+}
+
 bool s3bypass::IsXrayConfig(const QJsonObject &config) {
     for (const auto &outbound : config["outbounds"].toArray())
         if (outbound.toObject()["protocol"].toString() == "fedarisha") return true;
@@ -44,7 +51,7 @@ bool s3bypass::ParseFromJson(const QJsonObject &o) {
     name = o["name"].toString(o["tag"].toString());
     storage = o["storage"].toObject();
     tuning = o["tuning"].toObject();
-    server = QUrl(storage["endpoint"].toString()).host();
+    server = Host(storage);
     server_port = 443;
     return Validate().isEmpty();
 }
@@ -53,8 +60,11 @@ QString s3bypass::Validate() const {
     if (storage["type"].toString("s3") != "s3") return QStringLiteral("S3 Bypass: поддерживается только хранилище S3");
     for (const auto *key : {"bucket", "accessKey", "secretKey"})
         if (storage[QString::fromLatin1(key)].toString().trimmed().isEmpty()) return QStringLiteral("S3 Bypass: укажите корзину и ключи доступа");
+    // Without an endpoint Fedarisha uses AWS S3 of the region.
     const QUrl endpoint(storage["endpoint"].toString());
-    if (!endpoint.isValid() || (endpoint.scheme() != "http" && endpoint.scheme() != "https") || endpoint.host().isEmpty())
+    if (storage["endpoint"].toString().trimmed().isEmpty()) {
+        if (storage["region"].toString().trimmed().isEmpty()) return QStringLiteral("S3 Bypass: укажите адрес хранилища или регион AWS");
+    } else if (!endpoint.isValid() || (endpoint.scheme() != "http" && endpoint.scheme() != "https") || endpoint.host().isEmpty())
         return QStringLiteral("S3 Bypass: укажите адрес хранилища вида https://…");
     for (auto it = tuning.begin(); it != tuning.end(); ++it)
         if (!it.value().isDouble()) return QStringLiteral("S3 Bypass: параметры опроса и записи — числа");
@@ -64,7 +74,7 @@ QString s3bypass::Validate() const {
 QString s3bypass::DisplayAddress() {
     const auto &st = storage;
     QStringList parts;
-    if (const auto host = QUrl(st["endpoint"].toString()).host(); !host.isEmpty()) parts << host;
+    if (const auto host = Host(st); !host.isEmpty()) parts << host;
     if (const auto bucket = st["bucket"].toString(); !bucket.isEmpty()) parts << bucket;
     return parts.join('/');
 }

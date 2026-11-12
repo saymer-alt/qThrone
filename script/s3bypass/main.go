@@ -51,10 +51,16 @@ func xrayConfig(p profile) ([]byte, error) {
 	if len(p.SOCKSUser) < 1 || len(p.SOCKSUser) > 255 || len(p.SOCKSPass) < 1 || len(p.SOCKSPass) > 255 {
 		return nil, errors.New("authenticated bridge required")
 	}
-	for _, key := range []string{"bucket", "endpoint", "accessKey", "secretKey"} {
+	for _, key := range []string{"bucket", "accessKey", "secretKey"} {
 		if value, _ := p.Storage[key].(string); strings.TrimSpace(value) == "" {
 			return nil, fmt.Errorf("storage %s required", key)
 		}
+	}
+	// Without an endpoint Fedarisha uses AWS S3 of the region.
+	endpoint, _ := p.Storage["endpoint"].(string)
+	region, _ := p.Storage["region"].(string)
+	if strings.TrimSpace(endpoint) == "" && strings.TrimSpace(region) == "" {
+		return nil, errors.New("storage endpoint or region required")
 	}
 	if p.Storage["type"] == nil {
 		p.Storage["type"] = "s3"

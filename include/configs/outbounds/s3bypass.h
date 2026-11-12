@@ -10,6 +10,7 @@ public:
     s3bypass() { server_port = 443; socksPort = 0; }
     static const QStringList &StorageKeys();
     static const QStringList &TuningKeys();
+    static QString Host(const QJsonObject &storage);
     // The fedarisha outbound of an Xray configuration, as the original app imports it.
     static bool IsXrayConfig(const QJsonObject &config);
     bool ParseFromXrayConfig(const QJsonObject &config);
