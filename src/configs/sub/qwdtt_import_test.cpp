@@ -560,10 +560,10 @@ int TestQwdttImport() {
         }
         DataViewHtmlGenerator panels;
         panels.seedLatencyTest(DataViewHtmlGenerator::LatencyTestPanelState::Kind::Url, 10);
-        check(panels.buildHtml().isEmpty() && !panels.hasPriorityNotice(), "latency test has no top-bar indicator or decoration priority");
+        check(panels.build().html.isEmpty() && !panels.hasPriorityNotice(), "latency test has no top-bar indicator or decoration priority");
         panels.seedSpeedTest(3);
         panels.addTestProgress(1);
-        check(panels.buildHtml().isEmpty() && !panels.hasPriorityNotice(), "speed test progress moves into table cells");
+        check(panels.build().html.isEmpty() && !panels.hasPriorityNotice(), "speed test progress moves into table cells");
         panels.clearTestSections();
         panels.setDownloadReport({}, true);
         check(panels.hasPriorityNotice(), "update progress takes priority over decoration");

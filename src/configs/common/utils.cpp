@@ -133,6 +133,14 @@ namespace Configs
         return value.replace('%', QLatin1String("%25")).replace('+', QLatin1String("%2B"));
     }
 
+    QString formDecodedQueryValue(const QUrlQuery& query, const QString& key)
+    {
+        // urlencode()-style panels send '+' for a space, which QUrlQuery never decodes but keeps apart from %2B.
+        auto raw = query.queryItemValue(key, QUrl::FullyEncoded).toUtf8();
+        raw.replace('+', "%20");
+        return QUrl::fromPercentEncoding(raw);
+    }
+
     void mergeJsonObjects(QJsonObject& baseObject, const QJsonObject& obj)
     {
         for (const auto& key : obj.keys())
