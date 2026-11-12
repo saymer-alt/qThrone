@@ -396,6 +396,9 @@ QToolButton::menu-indicator {
          <string/>
         </attribute>
         <layout class="QVBoxLayout" name="verticalLayout_tab1">
+         <property name="spacing">
+          <number>0</number>
+         </property>
          <property name="leftMargin">
           <number>0</number>
          </property>
@@ -406,9 +409,6 @@ QToolButton::menu-indicator {
           <number>0</number>
          </property>
          <property name="bottomMargin">
-          <number>0</number>
-         </property>
-         <property name="spacing">
           <number>0</number>
          </property>
          <item>
@@ -656,6 +656,9 @@ QToolButton::menu-indicator {
               </layout>
              </widget>
              <widget class="QWidget" name="runtime_tab">
+              <property name="uiLevel" stdset="0">
+               <string notr="true">advanced</string>
+              </property>
               <attribute name="title">
                <string>Runtime Stats</string>
               </attribute>
@@ -692,7 +695,7 @@ QToolButton::menu-indicator {
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QLabel" name="label_running">
+       <widget class="ElidingLabel" name="label_running">
         <property name="text">
          <string/>
         </property>
@@ -746,6 +749,9 @@ QToolButton::menu-indicator {
     <addaction name="actionRemember_last_proxy"/>
     <addaction name="actionAllow_LAN"/>
     <addaction name="separator"/>
+    <addaction name="actionCheck_For_Update"/>
+    <addaction name="actionAbout"/>
+    <addaction name="separator"/>
     <addaction name="actionRestart_Proxy"/>
     <addaction name="actionRestart_Program"/>
     <addaction name="menu_exit"/>
@@ -793,6 +799,8 @@ QToolButton::menu-indicator {
     <addaction name="actionUrl_Test_Selected"/>
     <addaction name="actionSpeedtest_Selected"/>
     <addaction name="actionResolve_Selected_Out_IP"/>
+    <addaction name="actionService_Check_Selected"/>
+    <addaction name="menu_find_settings"/>
     <addaction name="menu_resolve_selected"/>
     <addaction name="actionClear_Test_Result"/>
     <addaction name="menu_reset_traffic"/>
@@ -837,7 +845,6 @@ QToolButton::menu-indicator {
     <addaction name="menu_scanner"/>
     <addaction name="separator"/>
     <addaction name="actionTraffic_Stats"/>
-    <addaction name="actionCheck_For_Update"/>
    </widget>
    <widget class="QMenu" name="menuTesting">
     <property name="title">
@@ -860,6 +867,7 @@ QToolButton::menu-indicator {
     <addaction name="actionUrl_Test_Group"/>
     <addaction name="actionSpeedtest_Group"/>
     <addaction name="actionResolve_Out_IP"/>
+    <addaction name="actionService_Check_Group"/>
     <addaction name="menu_resolve_domain"/>
     <addaction name="menu_clear_test_result"/>
     <addaction name="separator"/>
@@ -987,6 +995,9 @@ QToolButton::menu-indicator {
    <property name="shortcut">
     <string notr="true">Ctrl+E</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="menu_reset_traffic">
    <property name="text">
@@ -994,6 +1005,9 @@ QToolButton::menu-indicator {
    </property>
    <property name="shortcut">
     <string notr="true">Ctrl+R</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="menu_scan_qr">
@@ -1060,6 +1074,17 @@ QToolButton::menu-indicator {
     <string>Remember last profile</string>
    </property>
   </action>
+  <action name="actionAdvanced_Mode">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Advanced Mode</string>
+   </property>
+   <property name="toolTip">
+    <string>Show every option. Simple mode hides the advanced ones; they keep their values and still apply.</string>
+   </property>
+  </action>
   <action name="actionAllow_LAN">
    <property name="checkable">
     <bool>true</bool>
@@ -1088,6 +1113,9 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>Integration Settings</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="menu_select_all">
    <property name="text">
@@ -1103,6 +1131,9 @@ QToolButton::menu-indicator {
    </property>
    <property name="shortcut">
     <string notr="true">Ctrl+Alt+C</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="actionfake_2">
@@ -1163,6 +1194,9 @@ QToolButton::menu-indicator {
    <property name="shortcut">
     <string notr="true">Ctrl+Shift+I</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="menu_vpn_settings">
    <property name="text">
@@ -1172,6 +1206,9 @@ QToolButton::menu-indicator {
   <action name="menu_preset_settings">
    <property name="text">
     <string>Preset Settings</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="menu_vk_relay_settings">
@@ -1183,10 +1220,24 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>OTP Manager</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="menu_scanner">
    <property name="text">
     <string>IP Scanner</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
+  </action>
+  <action name="menu_find_settings">
+   <property name="text">
+    <string>Scan DPI evasion settings</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="actionRestart_Program">
@@ -1198,10 +1249,16 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>Open Config Folder</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="menu_open_dashboard">
    <property name="text">
     <string>Open Web dashboard</string>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="actionfake_4">
@@ -1264,6 +1321,9 @@ QToolButton::menu-indicator {
    </property>
    <property name="visible">
     <bool>true</bool>
+   </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
    </property>
   </action>
   <action name="menu_remove_invalid">
@@ -1334,6 +1394,9 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>Resolve out IP for group</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="actionAdd_New_Group">
    <property name="text">
@@ -1359,6 +1422,19 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>Resolve Selected Out IP</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
+  </action>
+  <action name="actionService_Check_Selected">
+   <property name="text">
+    <string>Service Check</string>
+   </property>
+  </action>
+  <action name="actionService_Check_Group">
+   <property name="text">
+    <string>Service Check Group</string>
+   </property>
   </action>
   <action name="actionRefresh_Column_Widths">
    <property name="text">
@@ -1379,6 +1455,9 @@ QToolButton::menu-indicator {
    <property name="text">
     <string>Runtime Stats</string>
    </property>
+   <property name="uiLevel" stdset="0">
+    <string notr="true">advanced</string>
+   </property>
   </action>
   <action name="actionAuto_Selector">
    <property name="text">
@@ -1398,6 +1477,14 @@ QToolButton::menu-indicator {
     <string>Check For Update</string>
    </property>
   </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>About</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
   <action name="actionUpdate_Rule_Sets">
    <property name="text">
     <string>Update Rule-Sets</string>
@@ -1414,6 +1501,11 @@ QToolButton::menu-indicator {
    <class>StartStopButton</class>
    <extends>QToolButton</extends>
    <header>include/ui/widget/StartStopButton.hpp</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidingLabel</class>
+   <extends>QLabel</extends>
+   <header>include/ui/widget/ElidingLabel.hpp</header>
   </customwidget>
  </customwidgets>
  <resources>

@@ -8,6 +8,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QGridLayout>
+#include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRegularExpressionValidator>
@@ -19,19 +20,53 @@ namespace {
     QString muxPositiveText(const int value) {
         return value > 0 ? QString::number(value) : QString();
     }
-}
 
-MuxSettingsWidget::MuxSettingsWidget(QWidget *parent) : QWidget(parent) {
-    auto *grid = new QGridLayout(this);
-    grid->setContentsMargins(0, 0, 0, 0);
     // Named so the settings search can index and reveal them.
-    const auto addField = [this, grid](int row, int column, const QString &name, const QString &text, QWidget *field) {
-        auto *label = new QLabel(text, this);
+    QLabel *addMuxField(QWidget *owner, QGridLayout *grid, int row, int column, const QString &name, const QString &text, QWidget *field) {
+        auto *label = new QLabel(text, owner);
         label->setObjectName(name);
         label->setBuddy(field);
         grid->addWidget(label, row, column);
         grid->addWidget(field, row, column + 1);
         return label;
+    }
+
+    QString muxFieldName(const QString &labelPrefix, const QLabel *label) {
+        return labelPrefix.isEmpty() ? label->text() : QStringLiteral("%1 %2").arg(labelPrefix, label->text());
+    }
+
+    template <typename Editor, typename Settings>
+    void openMuxDialog(QWidget *parent, const QString &title, const Settings &settings, std::function<void(const Settings &)> done) {
+        auto *dialog = new QDialog(parent);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(title);
+        auto *layout = new QVBoxLayout(dialog);
+        auto *editor = new Editor(dialog);
+        editor->setSettings(settings);
+        layout->addWidget(editor);
+        layout->addStretch(1);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
+        layout->addWidget(buttons);
+
+        auto *form = new Validation::Form(dialog);
+        form->attachStatus(buttons);
+        editor->bindValidation(form);
+        QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [dialog, form, editor, done = std::move(done)] {
+            if (!form->validateAll()) return;
+            done(editor->settings());
+            dialog->accept();
+        });
+        QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+        form->markAll();
+        dialog->open();
+    }
+}
+
+MuxSettingsWidget::MuxSettingsWidget(QWidget *parent) : QWidget(parent) {
+    auto *grid = new QGridLayout(this);
+    grid->setContentsMargins(0, 0, 0, 0);
+    const auto addField = [this, grid](int row, int column, const QString &name, const QString &text, QWidget *field) {
+        return addMuxField(this, grid, row, column, name, text, field);
     };
     const auto numberEdit = [this] {
         auto *edit = new QLineEdit(this);
@@ -106,9 +141,7 @@ Configs::MuxSettings MuxSettingsWidget::settings() const {
 void MuxSettingsWidget::bindValidation(Validation::Form *form, const QString &labelPrefix) {
     using namespace Validation;
     m_form = form;
-    const auto name = [&labelPrefix](const QLabel *label) {
-        return labelPrefix.isEmpty() ? label->text() : QStringLiteral("%1 %2").arg(labelPrefix, label->text());
-    };
+    const auto name = [&labelPrefix](const QLabel *label) { return muxFieldName(labelPrefix, label); };
     form->bind(m_maxStreams, Rules::Int(1, INT_MAX, Empty::Required)).label(name(m_maxStreamsLabel));
     form->bind(m_maxConnections, Rules::Int(1, INT_MAX, Empty::Required)).label(name(m_maxConnectionsLabel));
     form->bind(m_minStreams, Rules::Int(0, INT_MAX)).label(name(m_minStreamsLabel));
@@ -138,26 +171,66 @@ void MuxSettingsWidget::updateControls() {
 
 void MuxSettingsWidget::openDialog(QWidget *parent, const Configs::MuxSettings &settings,
                                    std::function<void(const Configs::MuxSettings &)> done) {
-    auto *dialog = new QDialog(parent);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->setWindowTitle(tr("Custom Multiplex"));
-    auto *layout = new QVBoxLayout(dialog);
-    auto *editor = new MuxSettingsWidget(dialog);
-    editor->setSettings(settings);
-    layout->addWidget(editor);
-    layout->addStretch(1);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
-    layout->addWidget(buttons);
+    openMuxDialog<MuxSettingsWidget>(parent, tr("Custom Multiplex"), settings, std::move(done));
+}
 
-    auto *form = new Validation::Form(dialog);
-    form->attachStatus(buttons);
-    editor->bindValidation(form);
-    connect(buttons, &QDialogButtonBox::accepted, dialog, [dialog, form, editor, done = std::move(done)] {
-        if (!form->validateAll()) return;
-        done(editor->settings());
-        dialog->accept();
-    });
-    connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-    form->markAll();
-    dialog->open();
+XrayMuxSettingsWidget::XrayMuxSettingsWidget(QWidget *parent) : QWidget(parent) {
+    auto *grid = new QGridLayout(this);
+    grid->setContentsMargins(0, 0, 0, 0);
+    const auto countEdit = [this](int min) {
+        auto *edit = new QLineEdit(this);
+        edit->setValidator(new QIntValidator(min, Configs::kXrayMuxMaxCount, edit));
+        return edit;
+    };
+
+    m_concurrency = countEdit(-1);
+    m_concurrencyLabel = addMuxField(this, grid, 0, 0, "xray_mux_concurrency_l", tr("Concurrency"), m_concurrency);
+    m_concurrencyLabel->setToolTip(tr("<html><head/><body><p>Streams one connection carries before another opens. "
+                                      "0 uses Xray's 8, and -1 sends TCP outside the mux.</p></body></html>"));
+    m_maxConnections = countEdit(0);
+    m_maxConnections->setPlaceholderText(tr("No limit"));
+    m_maxConnectionsLabel = addMuxField(this, grid, 0, 2, "xray_mux_max_connections_l", tr("Max Connections"), m_maxConnections);
+    m_maxConnectionsLabel->setToolTip(tr("<html><head/><body><p>Keep at most this many connections, for TCP and for XUDP each. Once every one "
+                                         "carries Concurrency streams, new streams join the least busy one.</p></body></html>"));
+    m_xudpConcurrency = countEdit(-1);
+    m_xudpConcurrencyLabel = addMuxField(this, grid, 1, 0, "xray_mux_xudp_concurrency_l", tr("XUDP Concurrency"), m_xudpConcurrency);
+    m_xudpConcurrencyLabel->setToolTip(tr("<html><head/><body><p>UDP streams per connection, on connections of their own. "
+                                          "0 carries UDP on the TCP connections, and -1 sends it outside the mux.</p></body></html>"));
+    // Same order as Configs::xrayXudpProxyUDP443Modes.
+    m_xudpProxyUDP443 = new QComboBox(this);
+    m_xudpProxyUDP443->addItems({tr("Reject"), tr("Allow"), tr("Skip")});
+    auto *udp443Label = addMuxField(this, grid, 1, 2, "xray_mux_xudp_proxy_udp443_l", tr("UDP/443"), m_xudpProxyUDP443);
+    udp443Label->setToolTip(tr("<html><head/><body><p>UDP to port 443, mostly QUIC. <b>Reject</b> makes browsers fall back to TCP (Xray's default), "
+                               "<b>Allow</b> carries it through the mux, and <b>Skip</b> sends it outside the mux.</p></body></html>"));
+    grid->setColumnStretch(4, 1);
+    ADD_ASTERISK(this)
+}
+
+void XrayMuxSettingsWidget::setSettings(const Configs::XrayMuxSettings &settings) {
+    m_concurrency->setText(QString::number(settings.concurrency));
+    m_maxConnections->setText(muxPositiveText(settings.max_connections));
+    m_xudpConcurrency->setText(QString::number(settings.xudp_concurrency));
+    m_xudpProxyUDP443->setCurrentIndex(qMax(0, Configs::xrayXudpProxyUDP443Modes.indexOf(settings.xudp_proxy_udp443)));
+}
+
+Configs::XrayMuxSettings XrayMuxSettingsWidget::settings() const {
+    Configs::XrayMuxSettings settings;
+    settings.concurrency = m_concurrency->text().trimmed().toInt();
+    settings.max_connections = m_maxConnections->text().trimmed().toInt();
+    settings.xudp_concurrency = m_xudpConcurrency->text().trimmed().toInt();
+    settings.xudp_proxy_udp443 = Configs::xrayXudpProxyUDP443Modes.value(m_xudpProxyUDP443->currentIndex());
+    return settings;
+}
+
+void XrayMuxSettingsWidget::bindValidation(Validation::Form *form, const QString &labelPrefix) {
+    using namespace Validation;
+    const auto name = [&labelPrefix](const QLabel *label) { return muxFieldName(labelPrefix, label); };
+    form->bind(m_concurrency, Rules::Int(-1, Configs::kXrayMuxMaxCount, Empty::Required)).label(name(m_concurrencyLabel));
+    form->bind(m_maxConnections, Rules::Int(0, Configs::kXrayMuxMaxCount)).label(name(m_maxConnectionsLabel));
+    form->bind(m_xudpConcurrency, Rules::Int(-1, Configs::kXrayMuxMaxCount, Empty::Required)).label(name(m_xudpConcurrencyLabel));
+}
+
+void XrayMuxSettingsWidget::openDialog(QWidget *parent, const Configs::XrayMuxSettings &settings,
+                                       std::function<void(const Configs::XrayMuxSettings &)> done) {
+    openMuxDialog<XrayMuxSettingsWidget>(parent, tr("Custom Mux"), settings, std::move(done));
 }

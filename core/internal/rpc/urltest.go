@@ -212,14 +212,8 @@ func (s *server) IPTest(ctx context.Context, in *gen.IPTestRequest) (*gen.IPTest
 	defer closeTestEnv(env, in.GetQwdttConfig())
 
 	timeout := time.Duration(in.GetTestTimeoutMs()) * time.Millisecond
-	var results []*probe.IPTestResult
-	if in.GetQwdttConfig() != "" {
-		results = probe.BatchIPTestTo(env.ctx, env.box, env.tags,
-			int(in.GetMaxConcurrency()), !env.live, timeout, func(*probe.IPTestResult) {})
-	} else {
-		results = probe.BatchIPTestTo(env.ctx, env.box, env.tags,
-			int(in.GetMaxConcurrency()), !env.live, timeout, func(*probe.IPTestResult) {})
-	}
+	results := probe.BatchIPTestTo(env.ctx, env.box, env.tags,
+		int(in.GetMaxConcurrency()), !env.live, timeout, in.GetProvider(), func(*probe.IPTestResult) {})
 
 	res := make([]*gen.IPTestRes, 0, len(results))
 	for idx, data := range results {

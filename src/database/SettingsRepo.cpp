@@ -116,10 +116,13 @@ namespace Configs {
             {"use_dns_object",                &use_dns_object},
             {"skip_delete_confirmation",      &skip_delete_confirmation},
             {"show_config_security",          &show_config_security},
+            {"simple_mode",                   &simple_mode},
             {"log_enable_include",            &log_enable_include},
             {"log_enable_exclude",            &log_enable_exclude},
             {"enable_warp",                   &enable_warp},
             {"warp_tos_accepted",             &warp_tos_accepted},
+            {"warp_api_tls_fragment",         &warp_api_tls_fragment},
+            {"warp_api_tls_record_fragment",  &warp_api_tls_record_fragment},
             {"enable_dns_routing",            &enable_dns_routing},
             {"inbound_auth",                  &inbound_auth},
             {"allow_stopping_active_profile", &allow_stopping_active_profile},
@@ -179,6 +182,8 @@ namespace Configs {
             {"speed_test_timeout_ms",  &speed_test_timeout_ms},
             {"url_test_timeout_ms",    &url_test_timeout_ms},
             {"xray_mux_concurrency",   &xray_mux_concurrency},
+            {"xray_mux_max_connections", &xray_mux_max_connections},
+            {"xray_mux_xudp_concurrency", &xray_mux_xudp_concurrency},
             {"current_route_id",       &current_route_id},
             {"ruleset_mirror",         &ruleset_mirror},
             {"core_dns_in_port",       &core_dns_in_port},
@@ -209,6 +214,7 @@ namespace Configs {
             {"log_file_level",             &log_file_level},
             {"mux_protocol",               &mux_protocol},
             {"mux_mode",                   &mux_mode},
+            {"xray_mux_xudp_proxy_udp443", &xray_mux_xudp_proxy_udp443},
             {"fragment_implementation",    &fragment_implementation},
             {"fragment_size",              &fragment_size},
             {"fragment_sleep",             &fragment_sleep},
@@ -275,6 +281,7 @@ namespace Configs {
             {"warp_masque_peer_public_key", &warp_masque_peer_public_key},
             {"warp_masque_ep",             &warp_masque_ep},
             {"warp_masque_sni",            &warp_masque_sni},
+            {"warp_api_tls_fragment_fallback_delay", &warp_api_tls_fragment_fallback_delay},
             {"inbound_user",               &inbound_user},
             {"inbound_pass",               &inbound_pass},
             {"url_scheme_mirror",          &url_scheme_mirror},
@@ -301,6 +308,7 @@ namespace Configs {
             {"warp_reserved", &warp_reserved},
             {"warp_masque_ifc_addrs", &warp_masque_ifc_addrs},
             {"warp_api_hosts", &warp_api_hosts},
+            {"warp_amnezia_packets", &warp_amnezia_packets},
         };
     }
 
@@ -317,7 +325,9 @@ namespace Configs {
         auto query = db.query("SELECT key, value FROM settings");
         if (!query) return;
 
+        bool freshInstall = true;
         while (query->executeStep()) {
+            freshInstall = false;
             const QString key = QString::fromStdString(query->getColumn(0).getText());
             const QString str = QString::fromStdString(query->getColumn(1).getText());
 
@@ -376,6 +386,7 @@ namespace Configs {
                 continue;
             }
         }
+        if (freshInstall) simple_mode = true;
         // Builds before 1.2.1 saved the translated interval label ("5 мин.", "۱۰ دقیقه"), which the core rejects.
         if (!Validation::Duration(ntp_interval).isEmpty()) {
             QString minutes;
@@ -444,6 +455,7 @@ namespace Configs {
     bool SettingsRepo::Save() {
         std::lock_guard<std::recursive_mutex> lock(db.WriteMutex());
         saveAllSettings();
+        ++revision;
         return true;
     }
 

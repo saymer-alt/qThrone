@@ -41,6 +41,8 @@
 #include "include/configs/outbounds/mrtt.h"
 #include "include/configs/outbounds/naive.h"
 #include "include/configs/outbounds/direct.h"
+#include "include/configs/outbounds/dnstt.h"
+#include "include/configs/outbounds/masterdns.h"
 
 namespace Configs
 {

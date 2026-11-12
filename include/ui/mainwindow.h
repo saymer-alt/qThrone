@@ -69,6 +69,7 @@ class GlobalHotkeys;
 class DialogVpnAuth;
 class DialogScanner;
 class DialogIpLists;
+class DialogRuleTester;
 class CommandPalette;
 
 namespace Qv2ray::ui { class SyntaxHighlighter; }
@@ -191,6 +192,8 @@ private slots:
 
     void on_menu_scanner_triggered();
 
+    void on_menu_find_settings_triggered();
+
     void on_menu_integration_settings_triggered();
 
     void on_menu_add_from_input_triggered();
@@ -308,7 +311,7 @@ private:
     QString addressFilterString;
     QString nameFilterString;
     QString typeFilterString;
-    QString countryFilterString;
+    QString testFilterString;
 
     QTimer *m_filterRefreshDebounce = nullptr;
 
@@ -509,9 +512,18 @@ private:
 
     void createCommandPalette();
 
+    void fillPaletteSettings();
+
     void showCommandPalette();
 
     void revealSetting(const SettingsIndex::Item &item);
+
+    void applyUiMode();
+
+    void setSimpleMode(bool simple);
+
+    // Takes or frees the one-settings-dialog slot (dialog_is_using) and lets an open command palette catch up.
+    void setDialogInUse(bool inUse);
 
     void url_test_current();
 
@@ -524,6 +536,7 @@ private:
     QPointer<DialogVpnAuth> m_vpnAuthDialog;
     QPointer<DialogScanner> m_scannerDialog;
     QPointer<DialogIpLists> m_ipListsDialog;
+    QPointer<DialogRuleTester> m_ruleTesterDialog;
     QHash<int, QString> m_scannerNames;
     bool m_scannerPanelShown = false;
 

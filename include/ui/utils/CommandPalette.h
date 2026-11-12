@@ -33,12 +33,16 @@ public:
         // Menu actions of the submenus a command sits in: hiding or disabling one hides or disables the command.
         QList<QPointer<QAction>> submenus;
         std::function<void()> run;
-        // The Blocker's answer for action, refreshed on each open.
+        // The Blocker's answer for action, refreshed on each open, return to the palette and blockersChanged().
         QString blocked;
+        // A setting Simple mode hides: only a query finds it, under its own heading, and run must leave Simple mode.
+        bool advanced = false;
     };
 
     // Why an entry's action cannot run right now, or empty when it can.
     using Blocker = std::function<QString(const QAction *)>;
+    // Builds the Blocker for the current state; asked again whenever the palette refreshes and before an entry runs.
+    using BlockerSource = std::function<Blocker()>;
 
     // Commands come from menus, each listed under its heading; skip is left out.
     CommandPalette(QWidget *parent, QList<QPair<QString, QMenu *>> menus, const QAction *skip);
@@ -46,7 +50,10 @@ public:
     void setSettings(QList<Entry> settings);
 
     // Refreshes the menus' state, collects the commands again if a menu changed, then shows an empty query.
-    void present(const Blocker &blocker);
+    void present(BlockerSource source);
+
+    // The Blocker's answers may have changed; an open palette reads them again once the caller has returned.
+    void blockersChanged();
 
     // Drops "&" mnemonics, keeping "&&" as a literal ampersand, and a trailing colon or ellipsis.
     static QString plainText(QString text);
@@ -59,16 +66,45 @@ public:
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private:
-    void refreshCommands();
+    // The selected entry, found again after the list is rebuilt.
+    struct Selection {
+        Entry::Kind kind = Entry::Command;
+        QPointer<QAction> action;
+        QString label;
+        QString path;
+        // Where the selection stood, to fall back to a neighbour when the entry is not runnable.
+        int row = -1;
+    };
+
+    // One line of the list: a heading, or an entry with the part of its label the query matched.
+    struct Row {
+        int entry = -1;
+        QString header;
+        int matchStart = 0;
+        int matchLength = 0;
+        bool operator==(const Row &) const = default;
+    };
+
+    Blocker currentBlocker() const;
+    // True when the commands were collected again, which renumbers the entries.
+    bool refreshCommands();
+    void refreshBlocked();
+    void refreshState();
+    void queueRefilter();
     void collect(QMenu *menu, const QString &section, const QString &path, const QList<QPointer<QAction>> &submenus,
                  const QSet<QMenu *> &refreshed, QSet<const QAction *> &seen, QList<Entry> &out);
     void markCommandsDirty();
-    void refilter();
-    void addHeader(const QString &title);
-    void addEntry(int entryIndex, int matchStart, int matchLength);
-    void selectFirst();
+    QList<Row> matchRows() const;
+    // With keep set, the list stays where it was scrolled and keep stays selected if it is still listed; unchanged rows
+    // are updated in place unless rebuild is set.
+    void refilter(const Selection &keep, bool rebuild = false);
+    void fillEntry(QStandardItem *item, const Row &row);
+    Selection currentSelection() const;
+    Selection keptSelection() const;
+    void select(const Selection &keep);
     void moveSelection(int delta);
     void activate(const QModelIndex &index);
 
@@ -79,11 +115,21 @@ private:
 
     QList<QPair<QString, QMenu *>> roots;
     const QAction *skipAction;
+    BlockerSource blockerSource;
     QList<QPointer<QMenu>> collectedMenus;
     bool commandsDirty = true;
     bool collecting = false;
+    // Set when the palette loses the focus: whatever happened elsewhere is read again once it is back.
+    bool stale = false;
+    bool refreshQueued = false;
+    // The entry the user picked last; kept while it is blocked, so it is selected again once it is free.
+    Selection preferred;
+    // Set while the list is rebuilt, so the selection moves made there are not taken for the user's.
+    bool restoring = false;
 
     // The commands first, then the settings.
     QList<Entry> entries;
+    // What the model shows, row for row.
+    QList<Row> rows;
     qsizetype commandCount = 0;
 };

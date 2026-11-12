@@ -29,6 +29,13 @@ public:
         ColumnCount,
     };
 
+    // One service check result; names and words are lowercase.
+    struct ServiceFilterKey {
+        QStringList names;  // check id and name, category id and name
+        QStringList words;
+        int state = 0;      // 1 available or partial, -1 restricted or blocked, 0 inconclusive
+    };
+
     struct FilterKey {
         QString type;
         QString address;
@@ -36,6 +43,7 @@ public:
         QString effectiveAddress;
         QString name;
         QString country;
+        QList<ServiceFilterKey> services;
         int port = 0;
     };
 
@@ -60,6 +68,8 @@ public:
     void emplaceProfiles(int row1, int row2);
 
     int indexOfProfile(int id);
+
+    bool isStartedRow(int sourceRow) const;
 
     QString rowLabel(int sourceRow, int displayRow) const;
 

@@ -149,6 +149,7 @@ namespace Configs_network {
         HTTPResponse result;
         result.header = _reply->rawHeaderPairs();
         result.finalUrl = _reply->url().toString();
+        result.status = _reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (tooLarge) {
             result.error = QObject::tr("Response larger than %1 MB").arg(maxBytes / (1024 * 1024));
         } else if (!writeError.isEmpty()) {

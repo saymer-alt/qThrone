@@ -80,6 +80,7 @@ namespace MwArg {
     inline const QString KillSwitch   = QStringLiteral("killSwitch");
     inline const QString LogFont      = QStringLiteral("logFont");
     inline const QString RemoteApi    = QStringLiteral("remoteApi");
+    inline const QString UiMode       = QStringLiteral("uiMode");
     // ProfileChanged arg.
     inline const QString RestartProxy = QStringLiteral("restartProxy");
 }
@@ -106,6 +107,9 @@ QStringList LaunchFiles_ExtractFromArgs(const QStringList &args, const QDir &lau
 void LaunchFiles_Submit(const QStringList &paths);
 void LaunchFiles_FlushPending();
 QStringList LaunchFiles_TakePending();
+
+// Drops the links and files to import, so a relaunch does not import them again.
+QStringList LaunchArgs_WithoutPayload(const QStringList &args);
 
 class QThread;
 inline QThread *DS_cores;

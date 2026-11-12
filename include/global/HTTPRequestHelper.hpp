@@ -14,6 +14,8 @@ namespace Configs_network {
         QList<QPair<QByteArray, QByteArray>> header;
         // Where redirects ended.
         QString finalUrl;
+        // HTTP status; 0 when no response arrived.
+        int status = 0;
     };
 
     struct DownloadProgressReport

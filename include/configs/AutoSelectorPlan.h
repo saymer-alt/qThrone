@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <memory>
@@ -30,9 +31,9 @@ namespace Configs
 
     struct AutoSelectorPlan
     {
-        // Eligible members, best first, capped at poolCap.
+        // Eligible members, best first, capped at poolCap; in priority mode tier by tier, each tier keeping a share.
         QList<int> pool;
-        // The prefix of pool that actually enters the config.
+        // The members of pool that enter the config, capped at buildLimit the same way.
         QList<int> build;
 
         // Profiles across every tracked group that still exists, the selector itself excluded.
@@ -49,6 +50,13 @@ namespace Configs
         int buildLimitUsed = 0;
         // The caller should run a client-side URL test before building.
         bool needsRanking = false;
+
+        // Priority strategy only. Member id -> index of the first tier it matches, tiers.size() when none.
+        QHash<int, int> tierOf;
+        // Members of build per tier; the extra last slot counts those matching no tier.
+        QList<int> tierBuilt;
+        // Eligible members per tier before the caps, laid out like tierBuilt.
+        QList<int> tierEligible;
 
         QString error;
 
@@ -80,4 +88,13 @@ namespace Configs
 
     // `untrusted` members rank as untested whatever their stored result says.
     QList<int> RerankAutoSelectorPool(const std::shared_ptr<Profile> &ent, const QList<int> &untrusted = {});
+
+    // Moves `members` behind the rest of the pool, so the next build tries the others first.
+    void DemoteAutoSelectorMembers(const std::shared_ptr<Profile> &ent, const QList<int> &members);
+
+    // The auto selector a started profile runs: the profile itself, or the selector hop of a chain.
+    std::shared_ptr<Profile> RunningSelectorOf(const std::shared_ptr<Profile> &ent);
+
+    // A chain whose selector members dial through fixed hops, so a direct test says nothing about them.
+    bool SelectorBehindHops(const std::shared_ptr<Profile> &ent);
 }

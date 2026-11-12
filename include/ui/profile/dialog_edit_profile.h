@@ -5,12 +5,15 @@
 
 #include "ui_dialog_edit_profile.h"
 #include "include/configs/common/multiplex.h"
+#include "include/configs/common/xrayMultiplex.h"
 #include "include/database/entities/Profile.h"
 #include "include/engine/EditLocks.h"
 
 namespace Ui {
     class DialogEditProfile;
 }
+
+class ResolverSourceWidget;
 
 class DialogEditProfile : public QDialog {
     Q_OBJECT
@@ -40,6 +43,8 @@ private:
     QLineEdit *addressEffective{};
     QList<QWidget *> outerTabOrder;
     qsizetype innerTabOrderIndex{-1};
+    QLabel *xdnsResolversLabel{};
+    ResolverSourceWidget *xdnsResolvers{};
 
     QString type;
     int groupId = -1;
@@ -56,6 +61,7 @@ private:
         QJsonObject XrayXDriveTemplate;
         // Saved into the profile only while Multiplex is Custom.
         Configs::MuxSettings mux;
+        Configs::XrayMuxSettings xrayMux;
     } CACHE;
 
     // dialog_edit_profile.cpp: profile type, protocol editor, common fields, layout
@@ -71,6 +77,7 @@ private:
     void setCacheButtonText(QPushButton *button, bool isSet);
     static void setRowVisible(QWidget *label, QWidget *field, bool visible);
     static void selectComboText(QComboBox *combo, const QString &text);
+    static void offerCustomMux(QComboBox *combo, int customIndex);
 
     // dialog_edit_profile_singbox.cpp: sing-box transport, TLS and multiplex
     void setupSingboxStream();
@@ -109,4 +116,10 @@ private:
     void loadXrayXDrive(const Configs::xrayXDrive &xdrive);
     void saveXrayXDrive(Configs::xrayXDrive &xdrive);
     void updateXrayXDriveControls();
+
+    // dialog_edit_profile_kcp.cpp: the mKCP panel of the Xray stream and the finalmask checks
+    void setupXrayKCPControls();
+    void bindXrayKCP();
+    void loadXrayKCP(const Configs::xrayKCP &kcp);
+    void saveXrayKCP(Configs::xrayKCP &kcp);
 };

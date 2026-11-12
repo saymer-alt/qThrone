@@ -33,6 +33,8 @@ var xrayFullGates []*xray.Gate
 
 var stopEgressForwardingWatch func()
 
+var untrackDNSTunnels func()
+
 var errInstanceNotRunning = errors.New("Instance is not running")
 
 func currentBox() *boxbox.Box {

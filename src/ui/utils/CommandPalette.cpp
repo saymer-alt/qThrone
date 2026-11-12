@@ -1,4 +1,5 @@
 #include "include/ui/utils/CommandPalette.h"
+#include "include/ui/utils/UiMode.h"
 
 #include <algorithm>
 
@@ -12,6 +13,7 @@
 #include <QPainter>
 #include <QPointer>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -225,6 +227,9 @@ CommandPalette::CommandPalette(QWidget *parent, QList<QPair<QString, QMenu *>> m
     list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     list->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    // Scrolling follows only the keyboard (moveSelection); a refresh that moves the selection must not move the view
+    // under a pointer that is about to click.
+    list->setAutoScroll(false);
     layout->addWidget(list, 1);
 
     hint = new QLabel(tr("↑↓ move · Enter run · Esc close · > commands only · @ settings only"), this);
@@ -237,8 +242,12 @@ CommandPalette::CommandPalette(QWidget *parent, QList<QPair<QString, QMenu *>> m
     hint->setPalette(hintPalette);
     layout->addWidget(hint);
 
-    connect(edit, &QLineEdit::textChanged, this, &CommandPalette::refilter);
+    connect(edit, &QLineEdit::textChanged, this, [this] { refilter({}); });
     connect(list, &QListView::doubleClicked, this, &CommandPalette::activate);
+
+    connect(list->selectionModel(), &QItemSelectionModel::currentChanged, this, [this] {
+        if (!restoring) preferred = currentSelection();
+    });
 
     const int lineHeight = fontMetrics().height();
     resize(lineHeight * 36, lineHeight * 28);
@@ -280,24 +289,69 @@ void CommandPalette::keepShortcutFromTextFields(QAction *action, QWidget *window
 
 void CommandPalette::setSettings(QList<Entry> settings) {
     entries.resize(commandCount);
+    for (const auto &entry : settings) {
+        if (entry.action) connect(entry.action, &QAction::changed, this, &CommandPalette::queueRefilter, Qt::UniqueConnection);
+    }
     entries.append(std::move(settings));
 }
 
-void CommandPalette::present(const Blocker &blocker) {
+void CommandPalette::present(BlockerSource source) {
+    blockerSource = std::move(source);
     refreshCommands();
-    for (auto &entry : entries) entry.blocked = blocker ? blocker(entry.action) : QString();
+    refreshBlocked();
     {
         const QSignalBlocker block(edit);
         edit->clear();
     }
-    refilter();
+    refilter({});
+    stale = false;
     show();
     raise();
     activateWindow();
     edit->setFocus(Qt::OtherFocusReason);
 }
 
-void CommandPalette::refreshCommands() {
+CommandPalette::Blocker CommandPalette::currentBlocker() const {
+    return blockerSource ? blockerSource() : Blocker();
+}
+
+void CommandPalette::refreshBlocked() {
+    const Blocker blocker = currentBlocker();
+    for (auto &entry : entries) entry.blocked = blocker ? blocker(entry.action) : QString();
+}
+
+CommandPalette::Selection CommandPalette::keptSelection() const {
+    // The entry picked last comes back once it is runnable again; until then a neighbour of the current row stands in.
+    Selection keep = preferred;
+    keep.row = list->currentIndex().row();
+    return keep;
+}
+
+void CommandPalette::refreshState() {
+    // Something may have changed while another window had the focus: re-read it all, keeping the query and the selection.
+    const bool collected = refreshCommands();
+    refreshBlocked();
+    refilter(keptSelection(), collected);
+}
+
+void CommandPalette::blockersChanged() {
+    queueRefilter();
+}
+
+void CommandPalette::queueRefilter() {
+    // A caller flips its state before the dialog it opens exists, and actions change in bursts; read it all once they
+    // have returned. Menus' aboutToShow is left alone, so their own state updates cannot loop back here.
+    if (refreshQueued || !isVisible()) return;
+    refreshQueued = true;
+    QTimer::singleShot(0, this, [this] {
+        refreshQueued = false;
+        if (!isVisible()) return;
+        refreshBlocked();
+        refilter(keptSelection());
+    });
+}
+
+bool CommandPalette::refreshCommands() {
     // Each menu's own aboutToShow handler brings its actions' enabled and checked state up to date.
     QSet<QMenu *> refreshed;
     if (!commandsDirty) {
@@ -307,7 +361,7 @@ void CommandPalette::refreshCommands() {
             refreshed.insert(menu);
         }
     }
-    if (!commandsDirty) return;
+    if (!commandsDirty) return false;
 
     collecting = true;
     for (const auto &menu : std::as_const(collectedMenus)) {
@@ -327,6 +381,7 @@ void CommandPalette::refreshCommands() {
     commands.append(entries.mid(commandCount));
     entries = std::move(commands);
     commandCount = count;
+    return true;
 }
 
 void CommandPalette::collect(QMenu *menu, const QString &section, const QString &path, const QList<QPointer<QAction>> &submenus,
@@ -338,6 +393,8 @@ void CommandPalette::collect(QMenu *menu, const QString &section, const QString 
     if (!refreshed.contains(menu)) emit menu->aboutToShow();
     for (QAction *action : menu->actions()) {
         if (action->isSeparator() || action == skipAction) continue;
+        // Toggled or disabled from a menu or the tray: an open palette shows it at once.
+        connect(action, &QAction::changed, this, &CommandPalette::queueRefilter, Qt::UniqueConnection);
         if (auto *sub = action->menu()) {
             collect(sub, section, path + " › " + plainText(sub->title()), submenus + QList<QPointer<QAction>>{action}, refreshed, seen, out);
             continue;
@@ -366,9 +423,8 @@ void CommandPalette::markCommandsDirty() {
     commandsDirty = true;
 }
 
-void CommandPalette::refilter() {
-    model.clear();
-
+QList<CommandPalette::Row> CommandPalette::matchRows() const {
+    QList<Row> out;
     QString text = edit->text().trimmed();
     bool commandsOnly = false;
     bool settingsOnly = false;
@@ -380,74 +436,115 @@ void CommandPalette::refilter() {
         text = text.mid(1).trimmed();
     }
     const QStringList terms = text.toLower().split(' ', Qt::SkipEmptyParts);
+    const bool simple = UiMode::Simple();
+    const auto parked = [simple](const Entry &entry) { return simple && entry.advanced; };
     const auto wanted = [&](const Entry &entry) {
-        if (!effective(entry, &QAction::isVisible)) return false;
+        // A parked setting's dialog opener may be one of the actions Simple mode hides.
+        if (!parked(entry) && !effective(entry, &QAction::isVisible)) return false;
         if (commandsOnly) return entry.kind == Entry::Command;
         if (settingsOnly) return entry.kind == Entry::Setting;
         return true;
     };
+    const auto header = [&out](const QString &title) { out.append({-1, title}); };
 
     if (terms.isEmpty()) {
         // Browsing: commands grouped by the menu they live in; settings only on request, there are too many.
         QString section;
         for (int i = 0; i < entries.size(); ++i) {
             const auto &entry = entries[i];
-            if (!wanted(entry) || (entry.kind == Entry::Setting && !settingsOnly)) continue;
+            if (!wanted(entry) || parked(entry) || (entry.kind == Entry::Setting && !settingsOnly)) continue;
             if (entry.section != section) {
                 section = entry.section;
-                addHeader(section);
+                header(section);
             }
-            addEntry(i, 0, 0);
+            out.append(Row{i});
         }
-    } else {
-        struct Match {
-            int index;
-            int score;
-            int start;
-        };
-        QList<Match> commands;
-        QList<Match> settings;
-        const QString &first = terms.first();
-        for (int i = 0; i < entries.size(); ++i) {
-            const auto &entry = entries[i];
-            if (!wanted(entry)) continue;
-            const QString label = entry.label.toLower();
-            const QString haystack = label + ' ' + entry.path.toLower() + ' ' + entry.keywords.toLower();
-            if (!std::all_of(terms.begin(), terms.end(), [&](const QString &term) { return haystack.contains(term); })) continue;
-
-            const int start = label.indexOf(first);
-            int score = 4;
-            if (start == 0) score = 0;
-            else if (start > 0 && !label[start - 1].isLetterOrNumber()) score = 1;
-            else if (start > 0) score = 2;
-            else if (entry.path.toLower().contains(first)) score = 3;
-            (entry.kind == Entry::Command ? commands : settings).append({i, score, start});
-        }
-        const auto byScore = [](const Match &a, const Match &b) { return a.score < b.score; };
-        std::stable_sort(commands.begin(), commands.end(), byScore);
-        std::stable_sort(settings.begin(), settings.end(), byScore);
-
-        if (!commands.isEmpty()) addHeader(tr("Commands"));
-        for (const auto &match : commands) addEntry(match.index, match.start, match.start >= 0 ? int(first.size()) : 0);
-        if (!settings.isEmpty()) addHeader(tr("Settings"));
-        for (const auto &match : settings) addEntry(match.index, match.start, match.start >= 0 ? int(first.size()) : 0);
-        if (commands.isEmpty() && settings.isEmpty()) addHeader(tr("Nothing found"));
+        return out;
     }
 
-    selectFirst();
+    struct Match {
+        int index;
+        int score;
+        int start;
+    };
+    QList<Match> commands;
+    QList<Match> settings;
+    QList<Match> advanced;
+    const QString &first = terms.first();
+    for (int i = 0; i < entries.size(); ++i) {
+        const auto &entry = entries[i];
+        if (!wanted(entry)) continue;
+        const QString label = entry.label.toLower();
+        const QString haystack = label + ' ' + entry.path.toLower() + ' ' + entry.keywords.toLower();
+        if (!std::all_of(terms.begin(), terms.end(), [&](const QString &term) { return haystack.contains(term); })) continue;
+
+        const int start = label.indexOf(first);
+        int score = 4;
+        if (start == 0) score = 0;
+        else if (start > 0 && !label[start - 1].isLetterOrNumber()) score = 1;
+        else if (start > 0) score = 2;
+        else if (entry.path.toLower().contains(first)) score = 3;
+        (entry.kind == Entry::Command ? commands : parked(entry) ? advanced : settings).append({i, score, start});
+    }
+    const auto byScore = [](const Match &a, const Match &b) { return a.score < b.score; };
+    std::stable_sort(commands.begin(), commands.end(), byScore);
+    std::stable_sort(settings.begin(), settings.end(), byScore);
+    std::stable_sort(advanced.begin(), advanced.end(), byScore);
+
+    const auto matched = [&](const Match &match) {
+        out.append({match.index, {}, qMax(match.start, 0), match.start >= 0 ? int(first.size()) : 0});
+    };
+    if (!commands.isEmpty()) header(tr("Commands"));
+    for (const auto &match : commands) matched(match);
+    if (!settings.isEmpty()) header(tr("Settings"));
+    for (const auto &match : settings) matched(match);
+    if (!advanced.isEmpty()) header(tr("Settings in Advanced mode"));
+    for (const auto &match : advanced) matched(match);
+    if (commands.isEmpty() && settings.isEmpty() && advanced.isEmpty()) header(tr("Nothing found"));
+    return out;
 }
 
-void CommandPalette::addHeader(const QString &title) {
-    auto *item = new QStandardItem(title);
-    item->setFlags(Qt::NoItemFlags);
-    item->setData(true, HeaderRole);
-    model.appendRow(item);
+void CommandPalette::refilter(const Selection &keep, bool rebuild) {
+    QList<Row> next = matchRows();
+    restoring = true;
+    if (!rebuild && !keep.label.isEmpty() && next == rows) {
+        // Same rows: update them in place, so a click or double-click in progress keeps its item.
+        for (int i = 0; i < rows.size(); ++i) {
+            if (rows[i].entry >= 0) fillEntry(model.item(i), rows[i]);
+        }
+    } else {
+        const int scroll = list->verticalScrollBar()->value();
+        rows = std::move(next);
+        model.clear();
+        for (const auto &row : std::as_const(rows)) {
+            auto *item = new QStandardItem;
+            if (row.entry >= 0) {
+                fillEntry(item, row);
+            } else {
+                item->setText(row.header);
+                item->setFlags(Qt::NoItemFlags);
+                item->setData(true, HeaderRole);
+            }
+            model.appendRow(item);
+        }
+        if (keep.label.isEmpty()) {
+            list->scrollToTop();
+        } else {
+            // The scroll range follows the new rows only after a layout pass.
+            list->doItemsLayout();
+            list->verticalScrollBar()->setValue(scroll);
+        }
+    }
+    select(keep);
+    restoring = false;
+    // A new query starts over from its first match.
+    if (keep.label.isEmpty()) preferred = currentSelection();
 }
 
-void CommandPalette::addEntry(int entryIndex, int matchStart, int matchLength) {
-    const auto &entry = entries[entryIndex];
+void CommandPalette::fillEntry(QStandardItem *item, const Row &row) {
+    const auto &entry = entries[row.entry];
     const QAction *action = entry.action;
-    auto *item = new QStandardItem(entry.label);
+    item->setText(entry.label);
     const bool enabled = entry.blocked.isEmpty() && effective(entry, &QAction::isEnabled);
     item->setFlags(enabled ? Qt::ItemIsEnabled | Qt::ItemIsSelectable : Qt::NoItemFlags);
     const QString path = entry.blocked.isEmpty() ? entry.path : entry.path + " · " + entry.blocked;
@@ -461,21 +558,44 @@ void CommandPalette::addEntry(int entryIndex, int matchStart, int matchLength) {
         }
     }
     if (!path.isEmpty()) tip += "\n" + path;
-    item->setData(entryIndex, EntryRole);
-    item->setData(qMax(matchStart, 0), MatchStartRole);
-    item->setData(matchStart >= 0 ? matchLength : 0, MatchLengthRole);
+    item->setData(row.entry, EntryRole);
+    item->setData(row.matchStart, MatchStartRole);
+    item->setData(row.matchLength, MatchLengthRole);
     item->setToolTip(tip);
-    model.appendRow(item);
 }
 
-void CommandPalette::selectFirst() {
-    list->scrollToTop();
+CommandPalette::Selection CommandPalette::currentSelection() const {
+    const QModelIndex current = list->currentIndex();
+    if (!current.isValid()) return {};
+    const auto &entry = entries[current.data(EntryRole).toInt()];
+    return {entry.kind, entry.action, entry.label, entry.path, current.row()};
+}
+
+void CommandPalette::select(const Selection &keep) {
+    int first = -1;
+    int match = -1;
+    int before = -1;
+    int after = -1;
     for (int row = 0; row < model.rowCount(); ++row) {
-        if (model.item(row)->isSelectable()) {
-            list->setCurrentIndex(model.index(row, 0));
-            return;
-        }
+        const auto *item = model.item(row);
+        if (!item->isSelectable()) continue;
+        if (first < 0) first = row;
+        if (keep.label.isEmpty()) break;
+        if (row < keep.row) before = row;
+        else if (after < 0) after = row;
+        // Several settings share their dialog's action, so the text tells them apart; a menu that recreated
+        // its actions leaves only the text to go by.
+        const auto &entry = entries[item->data(EntryRole).toInt()];
+        if (entry.kind != keep.kind || entry.label != keep.label || entry.path != keep.path) continue;
+        if (match < 0 || entry.action == keep.action) match = row;
+        if (entry.action == keep.action) break;
     }
+    // Without it, the nearest runnable row keeps the view where it was.
+    int row = match >= 0 ? match : (after >= 0 ? after : before);
+    if (row < 0) row = first;
+    if (row < 0) return;
+    // The view stays where it is, even if the user scrolled away from the selection.
+    list->setCurrentIndex(model.index(row, 0));
 }
 
 void CommandPalette::moveSelection(int delta) {
@@ -500,6 +620,12 @@ void CommandPalette::activate(const QModelIndex &index) {
     if (!index.isValid() || !(index.flags() & Qt::ItemIsSelectable)) return;
     const int entryIndex = index.data(EntryRole).toInt();
     if (entryIndex < 0 || entryIndex >= entries.size()) return;
+    // The list may predate a window that opened since; show the reason instead of running into a busy dialog slot.
+    const Blocker blocker = currentBlocker();
+    if (blocker && !blocker(entries[entryIndex].action).isEmpty()) {
+        refreshState();
+        return;
+    }
     const auto run = entries[entryIndex].run;
     hide();
     // After the palette is gone, so whatever the entry opens gets the focus.
@@ -540,4 +666,16 @@ bool CommandPalette::eventFilter(QObject *obj, QEvent *event) {
         }
     }
     return QDialog::eventFilter(obj, event);
+}
+
+void CommandPalette::changeEvent(QEvent *event) {
+    QDialog::changeEvent(event);
+    if (event->type() != QEvent::ActivationChange || !isVisible()) return;
+    // Opening activates the palette right after present() filled it, so only a return from another window refreshes.
+    if (!isActiveWindow()) {
+        stale = true;
+    } else if (stale) {
+        stale = false;
+        refreshState();
+    }
 }

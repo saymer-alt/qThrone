@@ -26,6 +26,7 @@
 #include "include/ui/setting/dialog_preset_settings.h"
 #include "include/ui/setting/dialog_vpn_settings.h"
 #include "include/ui/utils/CommandPalette.h"
+#include "include/ui/utils/UiMode.h"
 
 namespace SettingsIndex {
     namespace {
@@ -104,27 +105,35 @@ namespace SettingsIndex {
             return {};
         }
 
+        // Tabs and group boxes above an item, as the form lays them out and once Simple mode has folded them.
+        struct Where {
+            QStringList path;
+            QStringList simplePath;
+
+            Where operator+(const QString &title) const {
+                if (title.isEmpty()) return *this;
+                return {path + QStringList{title}, simplePath + QStringList{title}};
+            }
+        };
+
         class Collector {
         public:
-            Collector(QString dialogClass, QList<QWidget *> unavailable, QList<Item> &out)
-                : dialogClass(std::move(dialogClass)), unavailable(std::move(unavailable)), out(out) {}
+            Collector(QWidget *root, QString dialogClass, QList<QWidget *> unavailable, QList<Item> &out)
+                : root(root), dialogClass(std::move(dialogClass)), unavailable(std::move(unavailable)), out(out) {}
 
-            void walk(QWidget *parent, const QStringList &path) {
+            void walk(QWidget *parent, const Where &where) {
                 for (auto *child : parent->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
                     if (!child->isVisibleTo(parent) || unavailable.contains(child)) continue;
 
                     if (auto *tabs = qobject_cast<QTabWidget *>(child)) {
                         for (int i = 0; i < tabs->count(); ++i) {
                             const QString title = CommandPalette::plainText(tabs->tabText(i));
-                            add(tabs->widget(i), title, path);
-                            walk(tabs->widget(i), path + QStringList{title});
+                            enterSection(tabs->widget(i), title, where);
                         }
                         continue;
                     }
                     if (auto *group = qobject_cast<QGroupBox *>(child)) {
-                        const QString title = CommandPalette::plainText(group->title());
-                        add(group, title, path);
-                        walk(group, title.isEmpty() ? path : path + QStringList{title});
+                        enterSection(group, CommandPalette::plainText(group->title()), where);
                         continue;
                     }
 
@@ -140,10 +149,10 @@ namespace SettingsIndex {
                     }
                     if (!text.isEmpty()) {
                         QString caption = rowCaption(child);
-                        if (caption.isEmpty() && !path.isEmpty()) caption = path.last();
-                        add(child, text, path, caption == text ? QString() : caption);
+                        if (caption.isEmpty() && !where.path.isEmpty()) caption = where.path.last();
+                        add(child, text, where, caption == text ? QString() : caption);
                     }
-                    walk(child, path);
+                    walk(child, where);
                 }
             }
 
@@ -165,14 +174,40 @@ namespace SettingsIndex {
                 QString caption;
             };
 
-            void add(QWidget *widget, const QString &text, const QStringList &path, const QString &caption = {}) {
-                // Reveal finds the widget by name again, and findChild with an empty name matches any child.
-                if (text.isEmpty() || text.size() > kMaxLabelLength || widget->objectName().isEmpty()) return;
-                found.append({{dialogClass, widget->objectName(), text, path.join(QStringLiteral(" › ")),
-                               CommandPalette::keywordsFor(widget->objectName())},
-                              caption});
+            // A tab page or group box: listed itself, then walked with its title added, or moved under its fold target.
+            void enterSection(QWidget *section, const QString &title, const Where &where) {
+                const QString target = UiMode::FoldTarget(section);
+                if (target.isEmpty()) {
+                    add(section, title, where);
+                    walk(section, where + title);
+                    return;
+                }
+                const Where folded{where.path, {pageTitle(root->findChild<QWidget *>(target))}};
+                add(section, title, folded);
+                walk(section, {(where + title).path, (folded + title).simplePath});
             }
 
+            static QString pageTitle(QWidget *page) {
+                auto *stack = page ? qobject_cast<QStackedWidget *>(page->parentWidget()) : nullptr;
+                auto *tabs = stack ? qobject_cast<QTabWidget *>(stack->parentWidget()) : nullptr;
+                return tabs ? CommandPalette::plainText(tabs->tabText(tabs->indexOf(page))) : QString();
+            }
+
+            void add(QWidget *widget, const QString &text, const Where &where, const QString &caption = {}) {
+                // Reveal finds the widget by name again, and findChild with an empty name matches any child.
+                if (text.isEmpty() || text.size() > kMaxLabelLength || widget->objectName().isEmpty()) return;
+                Item item;
+                item.dialogClass = dialogClass;
+                item.objectName = widget->objectName();
+                item.label = text;
+                item.path = where.path.join(QStringLiteral(" › "));
+                item.simplePath = where.simplePath.join(QStringLiteral(" › "));
+                item.keywords = CommandPalette::keywordsFor(widget->objectName());
+                item.advanced = UiMode::IsAdvanced(widget);
+                found.append({item, caption});
+            }
+
+            QWidget *root;
             QString dialogClass;
             QList<QWidget *> unavailable;
             QList<Item> &out;
@@ -185,7 +220,7 @@ namespace SettingsIndex {
             QDialog host;
             Form form;
             form.setupUi(&host);
-            Collector collector(QString::fromLatin1(dialogClass), unavailable(&form), out);
+            Collector collector(&host, QString::fromLatin1(dialogClass), unavailable(&form), out);
             collector.walk(&host, {});
             collector.finish();
         }

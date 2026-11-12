@@ -9,6 +9,7 @@ import (
 
 	"RawlineCore/gen"
 	"RawlineCore/internal/boxmain"
+	"RawlineCore/internal/probe"
 	"RawlineCore/internal/sysdns"
 	"RawlineCore/internal/xray"
 
@@ -114,9 +115,16 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 	}
 
 	var routeRules []option.Rule
+	var xrayTunnelHops map[string]int
 	box, cancel, err := boxmain.Create([]byte(*in.CoreConfig), boxCtx.publish, func(options *option.Options) {
 		if options.Route != nil {
 			routeRules = options.Route.Rules
+		}
+		if systemDNS {
+			sysdns.AdjustInbound(options)
+		}
+		if in.GetNeedXray() {
+			xrayTunnelHops = probe.XrayDNSTunnelHops(options, in.GetXrayConfig())
 		}
 	})
 	if err != nil {
@@ -134,6 +142,8 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 			return
 		}
 	}
+
+	untrackDNSTunnels = probe.TrackDNSTunnels(box, xrayTunnelHops)
 
 	if in.GetTunIpv4Cidr() != "" {
 		stopEgressForwardingWatch = watchEgressForwarding(box.Network())
@@ -164,6 +174,11 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 	if stopEgressForwardingWatch != nil {
 		stopEgressForwardingWatch()
 		stopEgressForwardingWatch = nil
+	}
+
+	if untrackDNSTunnels != nil {
+		untrackDNSTunnels()
+		untrackDNSTunnels = nil
 	}
 
 	// Before the box closes, so the system resolver never points at a listener that is already gone.

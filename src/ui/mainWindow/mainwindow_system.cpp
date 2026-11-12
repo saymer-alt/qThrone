@@ -12,11 +12,16 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QThread>
+#include <QUrl>
+#include <array>
+#include <optional>
 
 #include "include/api/RPC.h"
 #include "include/api/remote/Server.hpp"
 #include "include/configs/generate.h"
+#include "include/engine/EditLocks.h"
 #include "include/engine/EngineHost.h"
 #include "include/engine/ThreadCheck.h"
 #include "include/engine/app/ExitController.h"
@@ -27,12 +32,14 @@
 #include "include/global/HTTPRequestHelper.hpp"
 #include "include/global/LocalNetwork.hpp"
 #include "include/global/Logger.hpp"
+#include "include/global/RunningProfiles.hpp"
 #include "include/scanner/ScanManager.h"
 #include "include/sys/HostPresence.hpp"
 #include "include/sys/KillSwitch.hpp"
 #include "include/sys/SystemProxy.hpp"
 #include "include/ui/mainWindow/MainWindowInternal.h"
 
+#include "include/ui/app/dialog_update.h"
 #include "include/ui/group/dialog_manage_groups.h"
 #include "include/ui/setting/dialog_basic_settings.h"
 #include "include/ui/setting/dialog_integration.h"
@@ -47,6 +54,8 @@
 
 #ifdef Q_OS_WIN
 #include "3rdparty/WinCommander.hpp"
+#include "include/sys/CoreElevation.hpp"
+#include "include/sys/windows/guihelper.h"
 #include "include/sys/windows/WinVersion.h"
 #endif
 
@@ -60,11 +69,11 @@ void MainWindow::on_menu_manage_groups_triggered() {
 
 void MainWindow::on_menu_routing_settings_triggered() {
     if (dialog_is_using) return;
-    dialog_is_using = true;
+    setDialogInUse(true);
     auto dialog = new DialogManageRoutes(this);
     connect(dialog, &QDialog::finished, this, [=,this] {
         dialog->deleteLater();
-        dialog_is_using = false;
+        setDialogInUse(false);
     });
     dialog->show();
 }
@@ -74,11 +83,11 @@ void MainWindow::openRouteProfileEditor(int routeId) {
     if (dialog_is_using) return;
     const auto profile = Configs::dataManager->routesRepo->GetRouteProfile(routeId);
     if (profile == nullptr) return;
-    dialog_is_using = true;
+    setDialogInUse(true);
 
     const auto onSaved = [this](const std::shared_ptr<Configs::RouteProfile>& chain) {
         if (!Configs::dataManager->routesRepo->Save(chain)) return;
-        if (chain->id == Configs::dataManager->settingsRepo->current_route_id)
+        if (chain->id == Configs::ActiveRouteId())
             connection()->noteRestartNeeded(Engine::RestartReason::Routing);
     };
     QDialog* editor;
@@ -91,9 +100,12 @@ void MainWindow::openRouteProfileEditor(int routeId) {
         connect(item, &RouteItem::settingsChanged, this, onSaved);
         editor = item;
     }
-    connect(editor, &QDialog::finished, this, [=, this] {
+    // The API must not edit what this editor saves back on OK.
+    auto routeLock = std::make_shared<Engine::EditLock>(Engine::EditTarget::Routes, routeId);
+    connect(editor, &QDialog::finished, this, [this, editor, routeLock]() mutable {
+        routeLock.reset();
         editor->deleteLater();
-        dialog_is_using = false;
+        setDialogInUse(false);
     });
     editor->setWindowModality(Qt::ApplicationModal);
     editor->show();
@@ -116,12 +128,12 @@ void MainWindow::on_menu_otp_manager_triggered() {
 
 void MainWindow::on_menu_integration_settings_triggered() {
     if (dialog_is_using) return;
-    dialog_is_using = true;
+    setDialogInUse(true);
     auto dialog = new DialogIntegration(this, getActionsForShortcut());
     connect(dialog, &QDialog::finished, this, [=,this]
     {
         dialog->deleteLater();
-        dialog_is_using = false;
+        setDialogInUse(false);
     });
     dialog->show();
 }
@@ -154,7 +166,7 @@ void MainWindow::on_menu_exit_triggered() {
     const auto program = QApplication::applicationFilePath();
     QStringList arguments;
     if (restart) {
-        arguments = Configs::dataManager->settingsRepo->argv;
+        arguments = LaunchArgs_WithoutPayload(Configs::dataManager->settingsRepo->argv);
         if (arguments.length() > 0) {
             arguments.removeFirst();
             arguments.removeAll("-tray");
@@ -178,10 +190,25 @@ void MainWindow::on_menu_exit_triggered() {
         }
         relaunched = true;
     }
+    if (reason == ExitReason::RunUpdater && !Windows_IsInAdmin() && !Sys::CoreElevation::InstallDirWritable()) {
+        // This Rawline cannot replace its own files: the elevated helper starts the updater once this process has exited.
+        const int code = Sys::CoreElevation::RunUpdater(Configs::GetBasePath() + "/Rawline.zip", QCoreApplication::applicationPid());
+        if (code != Sys::CoreElevation::HelperOk) {
+            exitController()->setExitInProgress(false);
+            exit_reason = ExitReason::None;
+            if (code == -1) {
+                MW_show_log(tr("The update was cancelled, Rawline keeps running"));
+            } else {
+                MessageBoxWarning(QObject::tr("Update"), Sys::CoreElevation::ResultText(code));
+            }
+            return;
+        }
+        relaunched = true;
+    }
 #endif
 
     Engine::host()->shutdown(!unattended);
-    if (reason == ExitReason::RunUpdater) {
+    if (reason == ExitReason::RunUpdater && !relaunched) {
         QDir::setCurrent(QApplication::applicationDirPath());
 #ifdef Q_OS_WIN
         QFile::remove("./RawlineUpdater.old");
@@ -388,20 +415,25 @@ void MainWindow::CheckUpdate() {
                         ReleaseVersion::FromAsset(asset["name"].toString()), ReleaseVersion::FromAsset(assets_name))) continue;
                 note_pre_release = release["prerelease"].toBool() ? " (Pre-release)" : "";
                 release_url = release["html_url"].toString();
-                release_note = release["body"].toString();
-                assets_name = asset["name"].toString();
+                release_tag = release["tag_name"].toString();
                 release_download_url = asset["browser_download_url"].toString();
                 break;
             }
         }
     }
 
-    if (release_download_url.isEmpty() || !isNewer(assets_name)) {
+    if (release_download_url.isEmpty() || !isNewer(release_tag)) {
         runOnUiThread([=,this] {
             MessageBoxInfo(QObject::tr("Update"), QObject::tr("No update"));
         });
         return;
     }
+
+    options.headers = {{"Accept", "application/vnd.github.raw+json"}};
+    const auto changelog = NetworkRequestHelper::HttpGet(
+        QStringLiteral("https://api.github.com/repos/throneproj/Rawline/contents/CHANGELOG.md?ref=") +
+            QString::fromLatin1(QUrl::toPercentEncoding(release_tag)), options);
+    const auto notes = changelog.error.isEmpty() ? releaseNotes(QString::fromUtf8(changelog.data), release_tag) : QString();
 
     runOnUiThread([=,this] {
         const auto headless = Sys::HostPresence::OtherHeadless();
@@ -452,8 +484,7 @@ void MainWindow::CheckUpdate() {
                     }
                 });
             });
-        } else if (btn2 == box.clickedButton()) {
-            QDesktopServices::openUrl(QUrl(release_url));
-        }
+        });
+        dialog->open();
     });
 }

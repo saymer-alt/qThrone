@@ -4,6 +4,7 @@
 #include <QList>
 #include <QMutex>
 #include <QString>
+#include <QStringList>
 #include <algorithm>
 
 #include <optional>
@@ -110,13 +111,19 @@ namespace Configs
         bool remove_duplicates = false;
         bool remove_insecure = false;
         bool remove_invalid = false;
-        // Case-insensitive patterns applied on every update, as the mobile app's: keep only matching names, drop matching names.
-        QString name_include;
-        QString name_exclude;
         bool url_test = false;
         // Follow-ups of url_test: ignored while it is off.
         bool remove_unavailable = false;
         bool sort_by_latency = false;
+        // Case-insensitive regexes on the profile name, applied as a fetch is parsed; the exclusion wins.
+        QString name_filter;
+        QString name_exclude;
+        // Subscription::FilterProtocols() ids.
+        QStringList type_exclude;
+        // "HK,JP" keeps, "!RU" drops; judged by an IP test after each update.
+        QString country_filter;
+
+        [[nodiscard]] bool SameFilters(const SubscriptionOptions &other) const;
 
         [[nodiscard]] QJsonObject ToJson() const;
 
@@ -149,6 +156,10 @@ namespace Configs
         SubscriptionOptions sub_options;
         int front_proxy_id = -1;
         int landing_proxy_id = -1;
+        // The routing profile this group's profiles are built with; -1 follows the global one.
+        int route_id = -1;
+        // Keep a routing profile from what the subscription ships (RouteProfile::source_gid names the group).
+        bool import_sub_route = false;
         // Inherit (profiles keep their own addresses), Address or IpList.
         EndpointSource endpoint;
 

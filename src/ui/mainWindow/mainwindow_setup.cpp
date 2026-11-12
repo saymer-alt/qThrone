@@ -34,10 +34,12 @@
 #include "include/scanner/IpListUpdater.h"
 #include "include/scanner/ScanManager.h"
 #include "include/ui/stats/dialog_auto_selector.h"
+#include "include/ui/setting/dialog_rule_tester.h"
 #include "include/sys/KillSwitch.hpp"
 #include "include/sys/AutoRun.hpp"
 #include "include/sys/UrlScheme.hpp"
 
+#include "include/ui/app/dialog_about.h"
 #include "include/ui/setting/ThemeManager.hpp"
 #include "include/ui/setting/Icon.hpp"
 #include "include/ui/stats/dialog_traffic_stats.h"
@@ -54,6 +56,7 @@
 
 #include "include/ui/utils/ProfilesTableFilterHeader.h"
 #include "include/ui/utils/ProfilesTableModel.h"
+#include "include/ui/utils/UiMode.h"
 
 #include "include/ui/group/dialog_edit_group.h"
 #include "include/ui/utils/NativeFileDialog.h"
@@ -183,6 +186,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(engineEvents, &Engine::EngineEvents::profilesRemoved, this, [this](const QList<int> &) {
         refresh_proxy_list({}, true, RefreshAnchor::Removal);
     });
+    connect(engineEvents, &Engine::EngineEvents::profilesChanged, this, [this](const QList<int> &) { refresh_proxy_list({}, true); });
+    // The title and tray tooltip name the routing profile in effect.
+    connect(engineEvents, &Engine::EngineEvents::routesChanged, this, [this] { refresh_status(); });
     connect(engineEvents, &Engine::EngineEvents::settingsChanged, this, [this, syncSettingsMirrors](const QStringList &) {
         refresh_status();
         syncSettingsMirrors();
@@ -354,6 +360,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_autoSelectorDialog->activateWindow();
     });
     connect(ui->actionCheck_For_Update, &QAction::triggered, this, [=,this] { runOnNewThread([=,this] { CheckUpdate(); }); });
+    connect(ui->actionAbout, &QAction::triggered, this, [=, this] {
+        USE_DIALOG(DialogAbout)
+    });
     connect(ui->actionUpdate_Rule_Sets, &QAction::triggered, this, [] {
         Engine::AssetUpdates::UpdateRuleSets([](const Engine::AssetUpdates::RuleSetResult &result) {
             if (!result.coreReachable) {
@@ -618,7 +627,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     });
     connect(filterHeader, &ProfilesTableFilterHeader::testFilterChanged, this, [this](const QString& currentText)
     {
-       countryFilterString = currentText;
+       testFilterString = currentText;
        m_filterRefreshDebounce->start();
     });
     connect(filterHeader, &ProfilesTableFilterHeader::focusTableRequested, this,
@@ -664,6 +673,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     trayMenu->addAction(actSelectRouting);
     auto *actOtpCodes = new QAction(tr("OTP Codes"), trayMenu);
     connect(actOtpCodes, &QAction::triggered, this, [this]() { openTrayOtpCodes(); });
+    UiMode::MarkAdvanced(actOtpCodes);
     trayMenu->addAction(actOtpCodes);
     // MacOS cannot reuse menus across different parents properly
     if (getOS() == Darwin) {
@@ -718,6 +728,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->actionAllow_LAN->setChecked(checked);
         MW_dialog_message(MwMessage::UpdateSettings, {});
     });
+    connect(ui->actionAdvanced_Mode, &QAction::triggered, this, [=,this](bool checked) { setSimpleMode(!checked); });
+    applyUiMode();
     connect(ui->checkBox_VPN, &QCheckBox::clicked, this, [=,this](bool checked) { connection()->setTun(checked); });
     connect(ui->checkBox_SystemProxy, &QCheckBox::clicked, this, [=,this](bool checked) { connection()->setSystemProxy(checked); });
     ui->checkBox_SystemProxy->installEventFilter(this);
@@ -746,13 +758,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             ui->actionUrl_Test_Selected->setEnabled(false);
             ui->menu_resolve_selected->setEnabled(false);
             ui->actionResolve_Selected_Out_IP->setEnabled(false);
+            ui->actionService_Check_Selected->setEnabled(false);
         } else
         {
             ui->actionSpeedtest_Selected->setEnabled(true);
             ui->actionUrl_Test_Selected->setEnabled(true);
             ui->menu_resolve_selected->setEnabled(true);
             ui->actionResolve_Selected_Out_IP->setEnabled(true);
+            ui->actionService_Check_Selected->setEnabled(true);
         }
+        ui->menu_find_settings->setEnabled(get_now_selected_list().size() == 1);
         if (tests()->isRunning()) {
             ui->menu_server->addAction(ui->menu_stop_testing);
         } else {
@@ -804,6 +819,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             if (dialog->result() == QDialog::Accepted) {
                 if (Configs::dataManager->groupsRepo->Save(ent)) {
                     MW_dialog_message(MwMessage::GroupsChanged, dialog->RestartNeeded() ? QStringList{MwArg::RestartProxy} : QStringList{});
+                    if (dialog->RefreshNeeded()) Subscription::updater()->RefreshGroup(ent->id, nullptr, true);
                 } else {
                     MessageBoxWarning(tr("Edit current Group"), tr("This group was deleted while you were editing it."));
                 }
@@ -888,6 +904,19 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->menuRouting_Menu->addAction(actionWarp);
     ui->menuRouting_Menu->addMenu(profilesMenu);
     ui->menuRouting_Menu->addAction(ui->actionUpdate_Rule_Sets);
+    auto* actionRuleTester = new QAction(tr("Route path lookup"), ui->menuRouting_Menu);
+    connect(actionRuleTester, &QAction::triggered, this, [this] {
+        const auto selected = get_now_selected_list();
+        const int preferred = selected.size() == 1 ? selected.first() : -1;
+        if (m_ruleTesterDialog == nullptr) {
+            m_ruleTesterDialog = new DialogRuleTester(connection(), preferred, this);
+            m_ruleTesterDialog->setAttribute(Qt::WA_DeleteOnClose);
+        } else {
+            m_ruleTesterDialog->setPreferredProfile(preferred);
+        }
+        ActivateWindow(m_ruleTesterDialog);
+    });
+    ui->menuRouting_Menu->addAction(actionRuleTester);
     ui->menuRouting_Menu->addSeparator();
 
     connect(ui->menuRouting_Menu, &QMenu::aboutToShow, this, [=,this]()
@@ -953,7 +982,33 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionResolve_Out_IP, &QAction::triggered, this, [=,this]() {
         tests()->runIpTests(Configs::dataManager->groupsRepo->CurrentGroup()->Profiles());
     });
-    connect(ui->menu_stop_testing, &QAction::triggered, this, [=,this]() { tests()->stop(); });
+    const auto startServiceChecks = [this](const QList<int>& ids) {
+        if (ids.size() > Engine::TestRunner::kMaxServiceCheckProfiles) {
+            MessageBoxWarning(tr("Service Check"), tr("A service check can test up to 100 profiles at a time. Select fewer profiles."));
+            return;
+        }
+        if (ids.size() > 20
+            && QMessageBox::question(this, tr("Service Check"),
+                                     tr("This checks %1 profiles. Each one sends about 20 requests to the checked services. Continue?").arg(ids.size()))
+                   != QMessageBox::StandardButton::Yes) {
+            return;
+        }
+        tests()->runServiceChecks(ids);
+    };
+    connect(ui->actionService_Check_Selected, &QAction::triggered, this, [this, startServiceChecks] {
+        startServiceChecks(get_now_selected_list());
+    });
+    connect(ui->actionService_Check_Group, &QAction::triggered, this, [startServiceChecks] {
+        if (const auto group = Configs::dataManager->groupsRepo->CurrentGroup()) startServiceChecks(group->Profiles());
+    });
+    ui->menu_stop_testing->setEnabled(false);
+    connect(ui->menu_stop_testing, &QAction::triggered, this, [this]() {
+        ui->menu_stop_testing->setEnabled(false);
+        dataViewHtmlGenerator_.markTestsStopping();
+        UpdateDataView(true);
+        // StopTests is a blocking RPC.
+        runOnNewThread([runner = tests()] { runner->stop(); });
+    });
     auto set_selected_or_group = [=,this](int mode) {
         // 0=group 1=select 2=unknown(menu is hide)
         ui->menu_server->setProperty("selected_or_group", mode);
@@ -966,7 +1021,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         QString name;
         auto selected = get_now_selected_list();
 
-        ui->menu_export_config->setVisible(false);
+        UiMode::SetVisible(ui->menu_export_config, false);
         if (selected.isEmpty()) return;
 
         auto profile = Configs::dataManager->profilesRepo->GetProfile(selected.first());
@@ -978,7 +1033,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             ui->actionCopy_Test_Result->setVisible(true);
         }
 
-        ui->menu_export_config->setVisible(true);
+        UiMode::SetVisible(ui->menu_export_config, true);
     });
     connect(ui->actionCopy_Test_Result, &QAction::triggered, this, [=,this]() {
         auto ents = get_now_selected_list();
@@ -1052,6 +1107,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             connection()->applyPendingRestart();
         } else if (action == QLatin1String(DataViewHtmlGenerator::DismissRestartActionUrl)) {
             connection()->clearRestartNeeded();
+        } else if (action == QLatin1String(DataViewHtmlGenerator::StopTestsActionUrl)) {
+            ui->menu_stop_testing->trigger();
         }
     });
 }

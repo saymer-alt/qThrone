@@ -20,6 +20,7 @@
 #include "include/engine/vpn/VpnAuthController.h"
 #include "include/engine/vpn/VpnEndpoints.h"
 #include "include/global/LocalNetwork.hpp"
+#include "include/global/RunningProfiles.hpp"
 #include "include/stats/autoselector/AutoSelectorMonitor.hpp"
 #include "include/sys/KillSwitch.hpp"
 #include "include/ui/setting/Icon.hpp"
@@ -57,9 +58,14 @@ void MainWindow::applyTopBarMetrics() {
     }
     for (auto* b : menuButtons) b->setMinimumWidth(uniformButtonWidth);
 
-    const QSize contentMin = minimumSizeHint();
-    setMinimumSize(qMax(designMinimumSize.width(), contentMin.width()),
-                   qMax(designMinimumSize.height(), contentMin.height()));
+    auto* centralLayout = centralWidget()->layout();
+    // Nested layouts keep stale minimums until the next layout pass.
+    centralLayout->activate();
+    const QMargins margins = centralLayout->contentsMargins();
+    // Top bar only: the rows below show profile names, and an explicit minimum never shrinks back (#2081).
+    const int topBarWidth = ui->horizontalLayout_2->minimumSize().width() + margins.left() + margins.right();
+    setMinimumSize(qMax(designMinimumSize.width(), topBarWidth),
+                   qMax(designMinimumSize.height(), minimumSizeHint().height()));
 }
 
 #include "include/ui/widget/RestartNotice.hpp"
@@ -71,7 +77,7 @@ void MainWindow::UpdateDataView(bool force)
     {
         return;
     }
-    auto html = dataViewHtmlGenerator_.buildHtml();
+    auto content = dataViewHtmlGenerator_.build();
     runOnUiThread([=, this] {
         // Over whichever interface is shown: the classic page is hidden under the new one.
         auto *toast = centralWidget()->findChild<QTextBrowser *>("restartNotice");
@@ -82,9 +88,12 @@ void MainWindow::UpdateDataView(bool force)
         }
         if (dataViewHtmlGenerator_.hasPendingRestart()) {
             ui->data_view->clear();
-            static_cast<RestartNotice *>(toast)->present(html);
+            ui->data_view->setToolTip({});
+            static_cast<RestartNotice *>(toast)->present(content.html);
         } else {
-            toast->hide(); ui->data_view->setHtml(html);
+            toast->hide();
+            ui->data_view->setHtml(content.html);
+            ui->data_view->setToolTip(content.toolTip);
         }
         if (seasonalDecoration) seasonalDecoration->setNoticePriority(dataViewHtmlGenerator_.hasPriorityNotice());
     }, true);
@@ -100,10 +109,14 @@ void MainWindow::testPanelSeeded(Engine::TestKind kind, int totalProfiles)
         case Engine::TestKind::Ip:
             dataViewHtmlGenerator_.seedLatencyTest(DataViewHtmlGenerator::LatencyTestPanelState::Kind::Ip, totalProfiles);
             break;
+        case Engine::TestKind::Service:
+            dataViewHtmlGenerator_.seedLatencyTest(DataViewHtmlGenerator::LatencyTestPanelState::Kind::Service, totalProfiles);
+            break;
         case Engine::TestKind::Speed:
             dataViewHtmlGenerator_.seedSpeedTest(totalProfiles);
             break;
     }
+    runOnUiThread([this] { ui->menu_stop_testing->setEnabled(true); });
 }
 
 void MainWindow::testProgressed()
@@ -114,6 +127,7 @@ void MainWindow::testProgressed()
 void MainWindow::testPanelsCleared()
 {
     dataViewHtmlGenerator_.clearTestSections();
+    runOnUiThread([this] { ui->menu_stop_testing->setEnabled(false); });
 }
 
 void MainWindow::testViewChanged(bool force)
@@ -197,7 +211,7 @@ void MainWindow::updateLogFilterFields() {
 void MainWindow::applyProfileFilters()
 {
     if (!profilesFilterModel) return;
-    profilesFilterModel->setFilters(typeFilterString, addressFilterString, nameFilterString, countryFilterString);
+    profilesFilterModel->setFilters(typeFilterString, addressFilterString, nameFilterString, testFilterString);
     refresh_proxy_list_column_size();
 }
 
@@ -272,7 +286,7 @@ void MainWindow::refresh_status(const QString &traffic_update) {
         ui->label_running->setToolTip({});
     }
 
-    const auto route = Configs::dataManager->routesRepo->GetRouteProfile(settings->current_route_id);
+    const auto route = Configs::dataManager->routesRepo->GetRouteProfile(Configs::ActiveRouteId());
     const QString activeRouteName = (route && route->name != "Default") ? route->name : "";
     const auto killSwitchState = Sys::KillSwitch::instance()->state();
     const bool killSwitchBlocking = killSwitchState == Sys::KillSwitch::State::Failed && Sys::KillSwitch::instance()->failedForIdentity();
@@ -520,9 +534,8 @@ void MainWindow::refresh_proxy_list_impl(const QList<int>& ids, bool mayNeedRese
 void MainWindow::refresh_sort_indicator() {
     const auto group = Configs::dataManager->groupsRepo->CurrentGroup();
     const int column = group == nullptr ? -1 : ProfilesTableModel::columnOfSort(group->sort.method);
-    const auto order = group != nullptr && group->sort.descending ? Qt::DescendingOrder : Qt::AscendingOrder;
-    // Section -1 hides the indicator.
-    ui->profilesTableView->horizontalHeader()->setSortIndicator(column, order);
+    auto *header = static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader());
+    if (header->setSortSection(column, group != nullptr && group->sort.descending)) refresh_proxy_list_column_size();
 }
 
 void MainWindow::sortCurrentGroup(GroupSortAction action) {

@@ -28,6 +28,7 @@ namespace Configs {
         QMap<QString, int*>         intMap;
         QMap<QString, QString*>     stringMap;
         QMap<QString, QStringList*> stringListMap;
+        std::atomic<quint64> revision{0};
 
         void initMaps();
         void createTables() const;
@@ -42,6 +43,9 @@ namespace Configs {
         bool Save();
         bool ResetToDefaults();
         
+        // Any thread; moves with every Save(), bookkeeping ones such as the traffic graph's state included.
+        quint64 Revision() const { return revision.load(); }
+
         // Runtime state and flags below are never persisted.
         QString core_socket_name = "";
         int started_id = NoProfileId;
@@ -156,6 +160,8 @@ namespace Configs {
         bool follow_status_in_taskbar = true;
         bool skip_delete_confirmation = false;
         bool show_config_security = false;
+        // UI only: config generation never reads it. A fresh install starts simple, an upgraded one advanced.
+        bool simple_mode = false;
         // -1 until a filter column has been used.
         int last_filter_column = -1;
 
@@ -303,7 +309,8 @@ namespace Configs {
         QString warp_ep = "";
         QStringList warp_reserved = {};
         bool warp_tos_accepted = false;
-        QString warp_mode = "wireguard"; // "wireguard" or "masque"
+        QString warp_mode = "wireguard"; // "wireguard", "amnezia", or "masque"
+        QStringList warp_amnezia_packets = {}; // AmneziaWG I1-I5, generated with the identity so config builds need no RPC
         QString warp_masque_private_key = "";
         QString warp_masque_peer_public_key = "";
         QString warp_masque_ep = "";
@@ -316,6 +323,10 @@ namespace Configs {
                 ? warp_masque_private_key.isEmpty() || warp_masque_peer_public_key.isEmpty() || warp_masque_ep.isEmpty() || warp_masque_ifc_addrs.isEmpty()
                 : warp_private_key.isEmpty() || warp_public_key.isEmpty() || warp_ep.isEmpty() || warp_ifc_addrs.isEmpty();
         }
+        // Registration ClientHello shaping; the core skips it when registration goes through the mixed inbound.
+        bool warp_api_tls_fragment = false;
+        bool warp_api_tls_record_fragment = false;
+        QString warp_api_tls_fragment_fallback_delay = ""; // Go duration; empty = 500ms
 
         // Hotkey
         QString hotkey_mainwindow = "";
@@ -340,6 +351,9 @@ namespace Configs {
         // Xray
         QString xray_log_level = "warning";
         int xray_mux_concurrency = 8;
+        int xray_mux_max_connections = 0;
+        int xray_mux_xudp_concurrency = 16;
+        QString xray_mux_xudp_proxy_udp443 = "reject";
         bool xray_mux_default_on = false;
         // Xray otherwise trusts only its built-in root certificates.
         bool xray_use_system_ca = false;

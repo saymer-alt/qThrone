@@ -221,8 +221,6 @@ github.com/metacubex/randv2 v0.2.0 h1:uP38uBvV2SxYfLj53kuvAjbND4RUDfFJjwr4UigMiL
 github.com/metacubex/randv2 v0.2.0/go.mod h1:kFi2SzrQ5WuneuoLLCMkABtiBu6VRrMrWFqSPyj2cxY=
 github.com/metacubex/sing v0.5.8 h1:OwJDSPP+pza6Ywt7NMR4kEYq+UNrsIywSk/eAMlqxz8=
 github.com/metacubex/sing v0.5.8/go.mod h1:ypf0mjwlZm0sKdQSY+yQvmsbWa0hNPtkeqyRMGgoN+w=
-github.com/metacubex/utls v1.8.8 h1:7fiMYahL+tT1I/vG1MWidv88r/3A5NnPrurjzApZGyQ=
-github.com/metacubex/utls v1.8.8/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
 github.com/mholt/acmez/v3 v3.1.6 h1:eGVQNObP0pBN4sxqrXeg7MYqTOWyoiYpQqITVWlrevk=
 github.com/mholt/acmez/v3 v3.1.6/go.mod h1:5nTPosTGosLxF3+LU4ygbgMRFDhbAVpqMI4+a4aHLBY=
 github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
@@ -407,6 +405,8 @@ github.com/throneproj/sing v0.9.4-0.20261024082846-e3e392877db8 h1:V3PK33YPQX6LA
 github.com/throneproj/sing v0.9.4-0.20261024082846-e3e392877db8/go.mod h1:K3Owt3xPhHugvlnlPPxZJ/exXdaJfEPOTNorGk4AXjo=
 github.com/throneproj/sing-box v1.11.16-0.20261110221151-acec9c0d0728 h1:q3GUpe1AfMAqsIvNu6Jj5wkzxtMUaNxUh+EB/fyf3Zw=
 github.com/throneproj/sing-box v1.11.16-0.20261110221151-acec9c0d0728/go.mod h1:28+tNuWCwFrrpLMkbd9+FUWG0vc9ZLEfoOlSf9uAA2I=
+github.com/throneproj/utls v1.8.8-0.20261105093534-f0ae7792aa1d h1:iIz+TLSsaRmo/LuX/IaZFiR3wpkKGYRUpPZx197SjLk=
+github.com/throneproj/utls v1.8.8-0.20261105093534-f0ae7792aa1d/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
 github.com/throneproj/wireguard-go v0.0.0-20261031210827-e11787583013 h1:MOqnvmWxl7xQhENqWF5TuapPNVnajsWXMbdkxjMK2Bs=
 github.com/throneproj/wireguard-go v0.0.0-20261031210827-e11787583013/go.mod h1:er10sELpmzLXq7S7Pbc1Zsbyapcr+/gxNAHKTo6fzVA=
 github.com/throneproj/xray-core v1.251015.1-0.20261101081745-1c6eb7771c4d h1:PVedMsGJ0xZkJANhPi8w57dcTqyJUHhdcr5abdEiDcY=

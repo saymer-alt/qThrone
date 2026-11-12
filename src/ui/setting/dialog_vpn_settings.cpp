@@ -6,8 +6,8 @@
 #include "include/engine/EngineHost.h"
 #include "include/engine/supervisor/CoreSupervisor.h"
 #include "include/ui/utils/ValidationForm.h"
+#include "include/ui/utils/UiMode.h"
 
-#include <QMessageBox>
 #include <QHostAddress>
 
 
@@ -50,6 +50,7 @@ DialogVPNSettings::DialogVPNSettings(QWidget *parent) : QDialog(parent), ui(new 
     ui->l3_bridge->setChecked(Configs::dataManager->settingsRepo->vpn_l3_bridge);
     ui->block_quic->setChecked(Configs::dataManager->settingsRepo->block_quic);
     for (auto *widget : UnavailableWidgets(ui)) widget->hide();
+    UiMode::Apply(this);
 
     using namespace Validation;
     form->bind(ui->vpn_mtu, Rules::Int(kVpnMinMtu, kVpnMaxMtu, Empty::Required)).label(ui->label_10->text());
@@ -124,26 +125,6 @@ void DialogVPNSettings::on_restore_default_ranges_clicked() {
     form->revalidate(ui->priv_ranges);
 }
 
-void DialogVPNSettings::on_troubleshooting_clicked() {
-
-
-    QMessageBox msg(
-        QMessageBox::Information,
-        tr("Troubleshooting"),
-        tr("If you have trouble starting VPN, you can force reset Core process here.\n\n"
-            "If still not working, see documentation for more information.\n"
-            "https://matsuridayo.github.io/n-configuration/#vpn-tun"),
-        QMessageBox::NoButton,
-        this
-    );
-    auto reset = msg.addButton(tr("Reset"), QMessageBox::ActionRole);
-    auto cancel = msg.addButton(tr("Cancel"), QMessageBox::ActionRole);
-
-    msg.setDefaultButton(cancel);
-    msg.setEscapeButton(cancel);
-
-    msg.exec();
-    if (msg.clickedButton() == reset) {
-        Engine::host()->supervisor()->resetCore();
-    }
+void DialogVPNSettings::on_restart_core_clicked() {
+    Engine::host()->supervisor()->resetCore();
 }

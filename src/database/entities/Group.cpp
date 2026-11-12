@@ -3,6 +3,7 @@
 #include "include/configs/generate.h"
 #include "include/database/ProfilesRepo.h"
 #include "include/global/Configs.hpp"
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QSet>
 
@@ -89,12 +90,20 @@ namespace Configs
         if (remove_duplicates) json["remove_duplicates"] = true;
         if (remove_insecure) json["remove_insecure"] = true;
         if (remove_invalid) json["remove_invalid"] = true;
-        if (!name_include.isEmpty()) json["name_include"] = name_include;
-        if (!name_exclude.isEmpty()) json["name_exclude"] = name_exclude;
         if (url_test) json["url_test"] = true;
         if (remove_unavailable) json["remove_unavailable"] = true;
         if (sort_by_latency) json["sort_by_latency"] = true;
+        if (!name_filter.isEmpty()) json["name_filter"] = name_filter;
+        if (!name_exclude.isEmpty()) json["name_exclude"] = name_exclude;
+        if (!type_exclude.isEmpty()) json["type_exclude"] = QJsonArray::fromStringList(type_exclude);
+        if (!country_filter.isEmpty()) json["country_filter"] = country_filter;
         return json;
+    }
+
+    bool SubscriptionOptions::SameFilters(const SubscriptionOptions &other) const {
+        return name_filter == other.name_filter && name_exclude == other.name_exclude
+               && QSet<QString>(type_exclude.cbegin(), type_exclude.cend()) == QSet<QString>(other.type_exclude.cbegin(), other.type_exclude.cend())
+               && country_filter == other.country_filter;
     }
 
     SubscriptionOptions SubscriptionOptions::FromJson(const QJsonObject &json) {
@@ -127,11 +136,16 @@ namespace Configs
         options.remove_duplicates = json["remove_duplicates"].toBool();
         options.remove_insecure = json["remove_insecure"].toBool();
         options.remove_invalid = json["remove_invalid"].toBool();
-        options.name_include = json["name_include"].toString();
-        options.name_exclude = json["name_exclude"].toString();
         options.url_test = json["url_test"].toBool();
         options.remove_unavailable = json["remove_unavailable"].toBool();
         options.sort_by_latency = json["sort_by_latency"].toBool();
+        // name_include: the earlier name of the keep filter.
+        options.name_filter = json["name_filter"].toString(json["name_include"].toString());
+        options.name_exclude = json["name_exclude"].toString();
+        for (const auto &type : json["type_exclude"].toArray()) {
+            if (const auto id = type.toString().trimmed(); !id.isEmpty() && !options.type_exclude.contains(id)) options.type_exclude << id;
+        }
+        options.country_filter = json["country_filter"].toString();
         return options;
     }
 
