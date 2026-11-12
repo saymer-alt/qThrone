@@ -49,7 +49,11 @@ namespace Configs
 
         // WS and gRPC run on Xray, like the clients that work with the same servers: sing-box sends no :authority,
         // no custom gRPC path and its own ALPN. Xray has no switch for an unverified certificate, so such a profile stays.
+        // REALITY runs on Xray whatever the fingerprint: servers since Xray 26.7 want the X25519MLKEM768 share
+        // sing-box's fingerprints may lack. Xray has no REALITY over WebSocket or HTTPUpgrade, so those stay on sing-box.
         bool IsXray() override {
+            if (tls->reality->enabled)
+                return transport->type.isEmpty() || transport->type == "tcp" || transport->type == "grpc";
             return (transport->type == "ws" || transport->type == "grpc") && !tls->insecure;
         }
 

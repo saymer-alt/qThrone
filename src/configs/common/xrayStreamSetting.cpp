@@ -1447,6 +1447,10 @@ namespace Configs {
         if (fingerprint.isEmpty() && !Configs::dataManager->settingsRepo->utlsFingerprint.isEmpty()) obj["fingerprint"] = Configs::dataManager->settingsRepo->utlsFingerprint;
         // REALITY needs a uTLS hello and fails on "unsafe"; Xray's own default (chrome) takes over.
         if (obj.value("fingerprint").toString().toLower() == tlsUnsafeFingerprint) obj.remove("fingerprint");
+        // REALITY servers since Xray 26.7 refuse a hello without X25519MLKEM768, which these presets lack; the closest
+        // browser that sends it works with old and new servers alike.
+        static const QHash<QString, QString> modern{{"ios", "safari"}, {"edge", "chrome"}, {"qq", "chrome"}, {"360", "chrome"}, {"android", "chrome"}};
+        if (const auto it = modern.constFind(obj.value("fingerprint").toString().toLower()); it != modern.constEnd()) obj["fingerprint"] = it.value();
         return {obj, ""};
     }
 
