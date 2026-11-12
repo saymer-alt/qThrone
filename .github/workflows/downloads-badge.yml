@@ -1,0 +1,51 @@
+name: Downloads badge
+
+# shields.io counts only the newest 100 releases; this sums every release and serves the badge JSON from Pages.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: downloads-badge
+  cancel-in-progress: true
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - name: Count downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          total=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].assets[].download_count' | awk '{s+=$1} END {print s+0}')
+          mkdir -p site
+          python3 - "$total" > site/downloads.json <<'EOF'
+          import json, sys
+          n = int(sys.argv[1])
+          def short(v):
+              for limit, suffix in ((10**9, 'G'), (10**6, 'M'), (10**3, 'k')):
+                  if v >= limit:
+                      x = v / limit
+                      text = f'{x:.1f}'.removesuffix('.0') if x < 10 else f'{round(x)}'
+                      return text + suffix
+              return str(v)
+          assert short(4564) == '4.6k' and short(31568) == '32k' and short(999) == '999' and short(10000) == '10k'
+          print(json.dumps({"schemaVersion": 1, "label": "downloads-total", "message": short(n), "color": "brightgreen"}))
+          EOF
+          cat site/downloads.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
