@@ -13,7 +13,7 @@ mkdir -p "$DEST"
 pushd core
 VERSION_SINGBOX=$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)
 # sing-box's REALITY client keeps X25519MLKEM768, which REALITY servers since Xray 26.7 require.
-export GOFLAGS="$(python3 ../script/reality_overlay.py)"
+python3 ../script/reality_overlay.py --in-place
 gomobile bind -v -o "$DEST/RawlineCore.aar" -target "$TARGET" -androidapi 24 -javapkg=io.throneproj -libname=rawline -trimpath \
   -ldflags "-s -w -checklinkname=0 -X github.com/sagernet/sing-box/constant.Version=${VERSION_SINGBOX} -X runtime.godebugDefault=multipathtcp=0" \
   -tags "$TAGS" ./mobile

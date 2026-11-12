@@ -10,6 +10,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 MODULE = 'github.com/sagernet/sing-box'
@@ -46,6 +47,10 @@ def main():
     if 'common.' not in text:
         text = text.replace('\t"github.com/sagernet/sing/common"\n', '')
     client.write_text(text, encoding='utf-8', newline='\n')
+    # gomobile builds outside the module and refuses -modfile: the Android build (a CI checkout) edits go.mod itself.
+    if sys.argv[1:] == ['--in-place']:
+        subprocess.check_call([go, 'mod', 'edit', f'-replace={MODULE}=./.rawline/sing-box'])
+        return
     modfile = work / 'go.mod'
     shutil.copyfile('go.mod', modfile)
     shutil.copyfile('go.sum', work / 'go.sum')
