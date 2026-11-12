@@ -592,6 +592,9 @@ namespace Configs {
         // Build-scoped like buildProfileSink: scan clones shadow ids without ever reaching the repo.
         thread_local const QHash<int, std::shared_ptr<Profile>> *buildProfileOverrides = nullptr;
 
+        // A route rule's Xray full config, built as its proxy outbound for the rest of one BuildSingBoxConfig.
+        thread_local QHash<int, std::shared_ptr<Profile>> routeXrayProfiles;
+
         thread_local int offlineValidationDepth = 0;
 
         struct GenerateEndpointEntry {
@@ -680,6 +683,7 @@ namespace Configs {
                 if (const auto it = buildProfileOverrides->constFind(id); it != buildProfileOverrides->constEnd())
                     return it.value();
             }
+            if (const auto it = routeXrayProfiles.constFind(id); it != routeXrayProfiles.constEnd()) return it.value();
             auto ent = dataManager->profilesRepo->GetProfile(id);
             if (ent == nullptr) return nullptr;
             if (buildProfileSink != nullptr) buildProfileSink->insert(id);
@@ -920,6 +924,19 @@ namespace Configs {
                 if (neededEnt == nullptr) {
                     ctx.error = "The routing profile is referencing outbounds that no longer exist, consider revising your settings";
                     return;
+                }
+                // A rule's Xray full config runs as its proxy outbound (the main profile keeps the whole config).
+                if (isXrayFullConfig(neededEnt) && item != ctx.ent->id && neededEnt->Custom() != nullptr) {
+                    if (const auto config = neededEnt->Custom()->RouteOutboundConfig(); !config.isEmpty()) {
+                        auto converted = ProfilesRepo::NewProfile("custom");
+                        converted->id = neededEnt->id;
+                        converted->gid = neededEnt->gid;
+                        converted->Custom()->type = Custom::CustomXrayOutbound;
+                        converted->Custom()->config = config;
+                        converted->outbound->name = neededEnt->outbound->name;
+                        routeXrayProfiles[item] = converted;
+                        neededEnt = converted;
+                    }
                 }
                 const bool routedTransport = IsNativeTransport(neededEnt->type);
                 if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore() && !routedTransport) || isCustomFullConfig(neededEnt) || isXrayFullConfig(neededEnt)) {
@@ -3479,6 +3496,8 @@ namespace Configs {
     }
 
     std::shared_ptr<BuildConfigResult> BuildSingBoxConfig(const std::shared_ptr<Profile>& ent, std::optional<int> routeId) {
+        routeXrayProfiles.clear();
+        struct ClearRouteXray { ~ClearRouteXray() { routeXrayProfiles.clear(); } } clearRouteXray;
         if (ent->type == "custom")
         {
             auto res = std::make_shared<BuildConfigResult>();

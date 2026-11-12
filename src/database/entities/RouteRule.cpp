@@ -759,7 +759,9 @@ namespace Configs {
         }
 
         bool routeRuleUnroutable(const std::shared_ptr<Profile>& ent) {
-            if (ent->outbound == nullptr || ent->outbound->IsExtraCore() || ent->outbound->IsXrayFullConfig()) return true;
+            if (ent->outbound == nullptr || ent->outbound->IsExtraCore()) return true;
+            // An Xray full config takes part through its proxy outbound when it has a self-contained one.
+            if (ent->outbound->IsXrayFullConfig()) return ent->Custom() == nullptr || ent->Custom()->RouteOutboundConfig().isEmpty();
             return ent->type == "custom" && ent->Custom() != nullptr && ent->Custom()->type == Custom::CustomFullConfig;
         }
 

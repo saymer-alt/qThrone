@@ -799,6 +799,23 @@ namespace Configs
         return {};
     }
 
+    QString Custom::RouteOutboundConfig() const {
+        if (type != CustomXrayFullConfig) return {};
+        static const QStringList local{"", "freedom", "blackhole", "dns", "loopback"};
+        QJsonObject chosen;
+        const auto outbounds = QString2QJsonObject(config)["outbounds"].toArray();
+        for (const auto &item : outbounds)
+            if (item.toObject()["tag"].toString() == "proxy") { chosen = item.toObject(); break; }
+        if (chosen.isEmpty())
+            for (const auto &item : outbounds)
+                if (!local.contains(item.toObject()["protocol"].toString())) { chosen = item.toObject(); break; }
+        if (chosen.isEmpty() || local.contains(chosen["protocol"].toString())) return {};
+        if (!chosen["proxySettings"].toObject()["tag"].toString().isEmpty() ||
+            !chosen["streamSettings"].toObject()["sockopt"].toObject()["dialerProxy"].toString().isEmpty()) return {};
+        chosen.remove("tag");
+        return QString::fromUtf8(QJsonDocument(chosen).toJson(QJsonDocument::Compact));
+    }
+
     QJsonObject Custom::ExportIdentity()
     {
         QJsonObject ob;

@@ -76,6 +76,10 @@ namespace Configs
 
         bool IsXray() override { return type == CustomXrayOutbound; }
 
+        // An Xray full config as one route outbound: its "proxy" outbound, else its first proxy one. Empty when there
+        // is none, or when it dials through the config's other outbounds.
+        QString RouteOutboundConfig() const;
+
         bool StreamProtocol() override;
 
         bool IsXrayFullConfig() override { return type == CustomXrayFullConfig; }
