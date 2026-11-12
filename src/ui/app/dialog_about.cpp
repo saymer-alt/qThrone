@@ -49,7 +49,10 @@ DialogAbout::DialogAbout(QWidget *parent) : QDialog(parent) {
     versions->addRow(QStringLiteral("Qt:"), valueLabel(QString::fromLatin1(qVersion())));
     versions->addRow(QStringLiteral("Go:"), goVersion);
 
-    auto *description = new QLabel(tr("Open-source and cross platform Desktop Proxy management utility developed as a successor to Nekoray."), this);
+    // GPL-3.0 asks an interactive program to show its license and warranty notice.
+    auto *description = new QLabel(tr("Free software under the GNU General Public License v3.0, provided without any warranty.") + QStringLiteral("<br>")
+                                       + tr("Based on %1").arg(QStringLiteral("<a href=\"https://github.com/throneproj/Throne\">Throne</a>")), this);
+    description->setOpenExternalLinks(true);
     description->setWordWrap(true);
     description->setMinimumWidth(fontMetrics().averageCharWidth() * 50);
 
@@ -67,18 +70,12 @@ DialogAbout::DialogAbout(QWidget *parent) : QDialog(parent) {
     auto *github = new QPushButton(QStringLiteral("GitHub"), this);
     github->setAutoDefault(false);
     connect(github, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/throneproj/Rawline")));
-    });
-    auto *support = new QPushButton(tr("Support Rawline"), this);
-    support->setAutoDefault(false);
-    connect(support, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/throneproj/Rawline/blob/dev/.github/donate/Donate.md")));
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/ttrroyy/Rawline")));
     });
 
     auto *buttons = new QHBoxLayout;
     buttons->addStretch();
     buttons->addWidget(github);
-    buttons->addWidget(support);
     buttons->addStretch();
 
     auto *layout = new QVBoxLayout(this);
