@@ -415,25 +415,20 @@ void MainWindow::CheckUpdate() {
                         ReleaseVersion::FromAsset(asset["name"].toString()), ReleaseVersion::FromAsset(assets_name))) continue;
                 note_pre_release = release["prerelease"].toBool() ? " (Pre-release)" : "";
                 release_url = release["html_url"].toString();
-                release_tag = release["tag_name"].toString();
+                release_note = release["body"].toString();
+                assets_name = asset["name"].toString();
                 release_download_url = asset["browser_download_url"].toString();
                 break;
             }
         }
     }
 
-    if (release_download_url.isEmpty() || !isNewer(release_tag)) {
+    if (release_download_url.isEmpty() || !isNewer(assets_name)) {
         runOnUiThread([=,this] {
             MessageBoxInfo(QObject::tr("Update"), QObject::tr("No update"));
         });
         return;
     }
-
-    options.headers = {{"Accept", "application/vnd.github.raw+json"}};
-    const auto changelog = NetworkRequestHelper::HttpGet(
-        QStringLiteral("https://api.github.com/repos/throneproj/Rawline/contents/CHANGELOG.md?ref=") +
-            QString::fromLatin1(QUrl::toPercentEncoding(release_tag)), options);
-    const auto notes = changelog.error.isEmpty() ? releaseNotes(QString::fromUtf8(changelog.data), release_tag) : QString();
 
     runOnUiThread([=,this] {
         const auto headless = Sys::HostPresence::OtherHeadless();
@@ -484,7 +479,8 @@ void MainWindow::CheckUpdate() {
                     }
                 });
             });
-        });
-        dialog->open();
+        } else if (btn2 == box.clickedButton()) {
+            QDesktopServices::openUrl(QUrl(release_url));
+        }
     });
 }
