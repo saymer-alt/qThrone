@@ -1465,6 +1465,14 @@ proxies:
         check(profiles.first()->outbound->DisplayType() == "qWDTT (WG)" && profiles.last()->outbound->DisplayType() == "qWDTT (WG)", "subscription modes and ordering");
     }
     check(parse(android + "\n" + android).size() == 2, "text subscription");
+    {
+        // The shape a TURN+ subscription serves (application/json): its profiles are qWDTT servers.
+        const QByteArray turnPlus = R"({"subscriptionName":"TURNPLUS+","description":"forever","trafficUsedMb":0.0,"trafficLimitMb":0.0,"updatedAt":"2026-11-12","version":1,"profiles":[{"name":"Sweden #1","peer":"203.0.113.20:56000","password":"q_test","hashes":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","workersPerHash":16,"listenPort":9000},{"name":"Germany #1","peer":"203.0.113.21:56000","password":"q_test","hashes":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","workersPerHash":16,"listenPort":9000}]})";
+        const auto profiles = parse(turnPlus);
+        auto *first = profiles.isEmpty() ? nullptr : dynamic_cast<Configs::qwdtt *>(profiles.first()->outbound.get());
+        check(profiles.size() == 2 && first && first->name == "Sweden #1" && first->server == "203.0.113.20" && first->server_port == 56000 &&
+                  first->hashes == QStringList{"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}, "TURN+ subscription imports qWDTT profiles");
+    }
     check(parse("qwdtt://config?peer=203.0.113.10%3Ainvalid&pass=test").isEmpty(), "invalid server port");
     {
         auto *settings = Configs::dataManager->settingsRepo.get();
