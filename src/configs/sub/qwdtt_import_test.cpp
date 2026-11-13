@@ -463,7 +463,7 @@ int TestQwdttImport() {
         check(Configs::dataManager->settingsRepo->current_route_id == globalRoute && Configs::dataManager->settingsRepo->remote_dns == globalDNS, "provider routing does not mutate global routing or DNS");
         {
             // A client rule to proxy beats the full Xray config's own "ru -> direct"; everything else keeps the provider's routing.
-            const auto full = parse(R"({"remarks":"RU split","outbounds":[{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"example.net","port":443,"users":[{"id":"00000000-0000-0000-0000-000000000001"}]}]}},{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}],"routing":{"rules":[{"type":"field","ip":["10.0.0.0/8"],"outboundTag":"direct"},{"type":"field","domain":["ads.example"],"outboundTag":"block"}]}})");
+            auto full = parse(R"({"remarks":"RU split","outbounds":[{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"example.net","port":443,"users":[{"id":"00000000-0000-0000-0000-000000000001"}]}]}},{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}],"routing":{"rules":[{"type":"field","ip":["10.0.0.0/8"],"outboundTag":"direct"},{"type":"field","domain":["ads.example"],"outboundTag":"block"}]}})");
             check(full.size() == 1 && full.first()->Custom() && full.first()->Custom()->IsXrayFullConfig(), "explicit routing fixture parses");
             auto explicitGroup = Configs::GroupsRepo::NewGroup(); explicitGroup->name = "Explicit rules";
             check(Configs::dataManager->groupsRepo->AddGroup(explicitGroup), "explicit routing group saved");

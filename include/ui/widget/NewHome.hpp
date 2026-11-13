@@ -198,6 +198,8 @@ private:
 
 class NewHome : public QWidget {
 public:
+    // Which routing the group's servers run with, "" for a plain group on the global profile; shared with the routing menu.
+    static QString routeText(const std::shared_ptr<Configs::Group> &group, bool *fromProvider);
     explicit NewHome(MainWindow *window);
     // Moves the notice and the log, connections, traffic and runtime pages in, or back to the classic window.
     void attach();
@@ -224,7 +226,6 @@ private:
     void showGroupMenu();
     void checkCurrentConnection();
     void refreshGroupHeader();
-    QString routeText(const std::shared_ptr<Configs::Group> &group, bool *fromProvider);
     void openRouting();
     void updateNotice();
     // Puts the panel, the subscription card and the connect block where the settings say.

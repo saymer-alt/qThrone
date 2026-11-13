@@ -16805,6 +16805,10 @@ Remove that endpoint from this routing profile as well?</source>
 <context>
     <name>NewHome</name>
     <message>
+        <source>Routing</source>
+        <translation>Маршрутизация</translation>
+    </message>
+    <message>
         <source>Provider turned routing off: all through the server</source>
         <translation>Провайдер выключил маршрутизацию: всё через сервер</translation>
     </message>

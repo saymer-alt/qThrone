@@ -938,6 +938,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     });
     ui->menuRouting_Menu->addAction(actionRuleTester);
     ui->menuRouting_Menu->addSeparator();
+    // The shown subscription's Happ / Incy routing decides over the client's profiles: it stands chosen above them,
+    // greyed while it is on, and opens its settings, where it is turned off.
+    auto* actionProviderRoute = new QAction(ui->menuRouting_Menu);
+    actionProviderRoute->setCheckable(true);
+    connect(actionProviderRoute, &QAction::triggered, this, [this] {
+        if (const auto group = Configs::dataManager->groupsRepo->CurrentGroup()) editSubscriptionRouting(group->id);
+    });
+    ui->menuRouting_Menu->addAction(actionProviderRoute);
 
     connect(ui->menuRouting_Menu, &QMenu::aboutToShow, this, [=,this]()
     {
@@ -970,8 +978,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
                 routeActions.append(action);
             }
         }
+        const auto group = Configs::dataManager->groupsRepo->CurrentGroup();
+        bool fromProvider = false;
+        const auto providerText = group ? NewHome::routeText(group, &fromProvider) : QString();
+        actionProviderRoute->setVisible(fromProvider);
+        actionProviderRoute->setText(providerText);
+        actionProviderRoute->setChecked(fromProvider);
         for (auto* action : routeActions) {
-            action->setChecked(Configs::dataManager->settingsRepo->current_route_id == action->data().toInt());
+            action->setChecked(!fromProvider && Configs::dataManager->settingsRepo->current_route_id == action->data().toInt());
+            action->setEnabled(!fromProvider);
         }
     });
     connect(ui->actionClear_Test_Result, &QAction::triggered, this, [=, this]() { clear_test_results(get_now_selected_list()); });

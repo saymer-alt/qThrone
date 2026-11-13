@@ -79,6 +79,18 @@ void MainWindow::updateTabToolTip(int gid) {
     }
 }
 
+void MainWindow::editSubscriptionRouting(int gid) {
+    const auto group = Configs::dataManager->groupsRepo->GetGroup(gid);
+    if (group == nullptr) return;
+    auto options = group->sub_options;
+    const auto before = options.ToJson();
+    if (!EditProviderRouting(options, this) || options.ToJson() == before) return;
+    group->sub_options = options;
+    Configs::dataManager->groupsRepo->Save(group);
+    const auto running = runningSnapshot();
+    MW_dialog_message(MwMessage::GroupsChanged, running && running->gid == group->id ? QStringList{MwArg::RestartProxy} : QStringList{});
+}
+
 void MainWindow::show_group(int gid) {
     if (Configs::dataManager->settingsRepo->refreshing_group) return;
     Configs::dataManager->settingsRepo->refreshing_group = true;
@@ -236,16 +248,7 @@ void MainWindow::show_group_tab_menu(const QPoint &p) {
         });
     }
     if (clickedGroup != nullptr && !clickedGroup->url.isEmpty()) {
-        connect(menu.addAction(tr("Маршрутизация подписки")), &QAction::triggered, this, [this, clickedGroup] {
-            auto options = clickedGroup->sub_options;
-            const auto before = options.ToJson();
-            if (!EditProviderRouting(options, this) || options.ToJson() == before) return;
-            clickedGroup->sub_options = options;
-            Configs::dataManager->groupsRepo->Save(clickedGroup);
-            const auto running = runningSnapshot();
-            const bool affectsRunning = running && running->gid == clickedGroup->id;
-            MW_dialog_message(MwMessage::GroupsChanged, affectsRunning ? QStringList{MwArg::RestartProxy} : QStringList{});
-        });
+        connect(menu.addAction(tr("Маршрутизация подписки")), &QAction::triggered, this, [this, clickedGroup] { editSubscriptionRouting(clickedGroup->id); });
         connect(menu.addAction(tr("Update subscription")), &QAction::triggered, this, [=,this]{
             auto group = Configs::dataManager->groupsRepo->GetGroup(clickedGid);
             if (group == nullptr || group->url.isEmpty()) return;

@@ -111,6 +111,9 @@ public:
 
     void show_group(int gid);
 
+    // The Happ / Incy routing dialog of a subscription; restarts the connection when it runs one of its servers.
+    void editSubscriptionRouting(int gid);
+
     void show_group_tab_menu(const QPoint &tabBarPos);
 
     void refresh_groups();

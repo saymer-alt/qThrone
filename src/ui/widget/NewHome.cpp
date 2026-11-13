@@ -9,7 +9,6 @@
 #include "include/database/GroupsRepo.h"
 #include "include/database/RoutesRepo.h"
 #include "include/global/RunningProfiles.hpp"
-#include "include/ui/group/dialog_provider_routing.h"
 #include "include/database/ProfilesRepo.h"
 #include "include/engine/EngineHost.h"
 #include "include/engine/connection/ConnectionManager.h"
@@ -1487,7 +1486,16 @@ void NewHome::buildSide(QVBoxLayout *side) {
     m_add->setIconName("add");
     m_add->setToolTip(T("Add"));
     connect(m_add, &QAbstractButton::clicked, this, [this] { showAddMenu(); });
+    // The routing profiles beside the subscription, as on the phone; the menu shows the provider's routing when it decides.
+    auto *routing = new NewTile(NewTile::Icon);
+    routing->setIconName("route");
+    routing->setToolTip(T("Routing"));
+    connect(routing, &QAbstractButton::clicked, this, [this, routing] {
+        guardReopen(mw->ui->menuRouting_Menu, routing);
+        mw->ui->menuRouting_Menu->popup(routing->mapToGlobal(QPoint(0, routing->height() + 6)));
+    });
     chipRow->addWidget(m_chip, 1);
+    chipRow->addWidget(routing);
     chipRow->addWidget(m_add);
     chipRow->setContentsMargins(0, 14, 0, 0);
     m_chipBox = new QWidget;
@@ -1624,6 +1632,8 @@ void NewHome::buildBody(QVBoxLayout *body) {
     m_routeLine = label({}, 11, true);
     m_routeLine->setContentsMargins(14, 0, 14, 8);
     m_routeLine->setCursor(Qt::PointingHandCursor);
+    // Elided to the panel's width (eventFilter), so a long profile name never widens the panel.
+    m_routeLine->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_routeLine->installEventFilter(this);
     serversLayout->addWidget(m_routeLine);
 
@@ -1826,7 +1836,7 @@ void NewHome::updateNotice() {
 // The order BuildSingBoxConfig decides it in: the subscription's Happ / Incy routing, else its own or the global profile.
 QString NewHome::routeText(const std::shared_ptr<Configs::Group> &group, bool *fromProvider) {
     const auto &options = group->sub_options;
-    *fromProvider = options.provider_routing_enabled && !options.routing_provider.isEmpty();
+    *fromProvider = options.provider_routing_enabled && !options.routing_provider.isEmpty() && !options.provider_routing.isEmpty();
     if (*fromProvider) {
         if (options.provider_routing == "off") return T("Provider turned routing off: all through the server");
         const auto name = QString2QJsonObject(options.provider_routing).value("Name").toString();
@@ -1842,14 +1852,8 @@ QString NewHome::routeText(const std::shared_ptr<Configs::Group> &group, bool *f
 void NewHome::openRouting() {
     const auto group = Configs::dataManager->groupsRepo->CurrentGroup();
     if (!group) return;
-    if (!m_routeFromProvider) { mw->ui->menu_routing_settings->trigger(); return; }
-    auto options = group->sub_options;
-    const auto before = options.ToJson();
-    if (!EditProviderRouting(options, mw) || options.ToJson() == before) return;
-    group->sub_options = options;
-    Configs::dataManager->groupsRepo->Save(group);
-    const auto running = mw->runningSnapshot();
-    MW_dialog_message(MwMessage::GroupsChanged, running && running->gid == group->id ? QStringList{MwArg::RestartProxy} : QStringList{});
+    if (m_routeFromProvider) mw->editSubscriptionRouting(group->id);
+    else mw->ui->menu_routing_settings->trigger();
 }
 
 void NewHome::refreshGroupHeader() {
@@ -1862,8 +1866,8 @@ void NewHome::refreshGroupHeader() {
         .arg(group->id).arg(group->name).arg(group->sub_last_update).arg(sub.used()).arg(sub.total).arg(sub.expire)
         .arg(sub.announce, sub.support_url).arg(int(mw_sub_updating) * 2 + int(m_announceOpen)).arg(route);
     m_routeLine->setVisible(!route.isEmpty());
-    m_routeLine->setText(QFontMetrics(m_routeLine->font()).elidedText(route, Qt::ElideRight, std::max(200, m_routeLine->width() - 28)));
     m_routeLine->setToolTip(route);
+    m_routeLine->setText(QFontMetrics(m_routeLine->font()).elidedText(route, Qt::ElideRight, m_routeLine->contentsRect().width()));
     m_refresh->setSpinning(subscription && mw_sub_updating);
     if (key == m_headerKey) return;
     m_headerKey = key;
@@ -2482,6 +2486,8 @@ bool NewHome::eventFilter(QObject *watched, QEvent *event) {
         if (watched == m_announce) { m_announceOpen = !m_announceOpen; refreshGroupHeader(); return true; }
         if (watched == m_routeLine) { openRouting(); return true; }
     }
+    if (watched == m_routeLine && event->type() == QEvent::Resize)
+        m_routeLine->setText(QFontMetrics(m_routeLine->font()).elidedText(m_routeLine->toolTip(), Qt::ElideRight, m_routeLine->contentsRect().width()));
     return QWidget::eventFilter(watched, event);
 }
 
