@@ -10,7 +10,7 @@
 #include "include/ui/profile/edit_qwdtt.h"
 #include "include/ui/setting/ThemeManager.hpp"
 #include "include/ui/utils/ShareBlocks.h"
-#include "include/ui/setting/dialog_servers.h"
+#include "include/ui/setting/dialog_panel_deploy.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -36,6 +36,8 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
+#include <QStackedWidget>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -54,29 +56,6 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
-namespace {
-// Like the original app, a deployment's qWDTT link names no tunnel mode: the client's
-// default (WG) applies. Links stored by earlier versions said RAW; they read the same now.
-QString kindTitle(const QString &kind) {
-    return kind == "qwdtt" ? QStringLiteral("qWDTT") : kind == "csqtt" ? QStringLiteral("CSQTT") : kind == "mrtt" ? QStringLiteral("MRTT") : kind == "freeturn" ? QStringLiteral("FreeTurn") : QStringLiteral("WDTT Plus");
-}
-QString normalizedRelayLink(QString link) {
-    if (link.startsWith("csqtt://connect?", Qt::CaseInsensitive)) {
-        Configs::csqtt profile;
-        if (profile.ParseFromLink(link)) {
-            const auto encrypted = profile.ExportToLink();
-            if (!encrypted.isEmpty()) return encrypted;
-        }
-        return link;
-    }
-    if (!link.startsWith("qwdtt://config", Qt::CaseInsensitive)) return link;
-    static const QRegularExpression mode(R"(([?&])mode=[^&#]*&?)");
-    static const QRegularExpression dangling(R"([?&](#|$))");
-    link.replace(mode, "\\1");
-    link.replace(dangling, "\\1");
-    return link;
-}
-}
 
 RelayTask::RelayTask(QObject *parent) : QObject(parent) {
     connect(&process, &QProcess::started, this, [this] { process.write(requestBytes); });
@@ -364,567 +343,6 @@ void autoEnabled(QComboBox *combo, bool enabled) {
     if (auto *model = qobject_cast<QStandardItemModel *>(combo->model()))
         model->item(1)->setEnabled(enabled);
 }
-QJsonObject freshServer(const QString &kind) {
-    return {{"id", QUuid::createUuid().toString(QUuid::WithoutBraces)},
-            {"kind", kind},
-            {"name", "Новый сервер"},
-            {"user", "root"},
-            {"auth", "password"},
-            {"sshPort", "22"},
-            {"peerPort", kind == "csqtt" || kind == "mrtt" ? "46000" : "56000"},
-            {"wgPort", kind == "freeturn" ? "51820" : "56001"},
-            {"ftMethod", "docker"},
-            {"ftBackend", "new"},
-            {"ftMode", "udp"},
-            {"ftObf", "rtpopus3"},
-            {"localPort", "9000"},
-            {"dns", ""},
-            {"directPort", "56002"},
-            {"rawPort", "56003"},
-            {"adminPort", "56002"},
-            {"webPort", "46002"},
-            {"dns1", "1.1.1.1"},
-            {"dns2", "1.0.0.1"},
-            // The server is bound to this computer, like the original apps bind it to the phone:
-            // the deployment link names no device and new profiles take this ID.
-            {"deviceId", Configs::RelayDeviceID()},
-            {"password", kind == "mrtt" ? QUuid::createUuid().toString(QUuid::WithoutBraces).remove('-').left(16) : QString()},
-            {"adminToken", QUuid::createUuid().toString(QUuid::WithoutBraces).remove('-') +
-                               QUuid::createUuid().toString(QUuid::WithoutBraces).remove('-')}};
-}
-// The MRTT installs going on now, as its app shows them: several run side by side, each with its own step.
-namespace MrttJobs {
-struct Job {
-    QString id, title, step;
-    int percent = 0;
-    RelayTask *task = nullptr;
-};
-static QList<Job> jobs;
-// The status circle: an arc that turns while it is shown.
-class Spinner : public QAbstractButton {
-public:
-    explicit Spinner(QWidget *parent) : QAbstractButton(parent) {
-        setFixedSize(26, 26);
-        setCursor(Qt::PointingHandCursor);
-        timer.setInterval(30);
-        QObject::connect(&timer, &QTimer::timeout, this, [this] { angle = (angle + 12) % 360; update(); });
-    }
-protected:
-    void showEvent(QShowEvent *) override { timer.start(); }
-    void hideEvent(QHideEvent *) override { timer.stop(); }
-    void paintEvent(QPaintEvent *) override {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        QPen pen(palette().color(QPalette::WindowText), 2.5, Qt::SolidLine, Qt::RoundCap);
-        painter.setPen(pen);
-        painter.drawArc(rect().adjusted(4, 4, -4, -4), -angle * 16, 270 * 16);
-    }
-private:
-    QTimer timer;
-    int angle = 0;
-};
-static QMap<int, std::function<void()>> watchers;
-static int nextWatcher = 0;
-static void changed() {
-    for (const auto &watcher : QMap<int, std::function<void()>>(watchers)) watcher();
-}
-static bool running(const QString &id) {
-    for (const auto &job : jobs) if (job.id == id) return true;
-    return false;
-}
-static void add(const Job &job) { jobs.append(job); changed(); }
-static void update(const QString &id, const QString &step, int percent) {
-    for (auto &job : jobs) if (job.id == id) {
-        job.step = step;
-        if (percent >= 0) job.percent = percent;
-    }
-    changed();
-}
-static void remove(const QString &id) {
-    jobs.removeIf([&id](const Job &job) { return job.id == id; });
-    changed();
-}
-// The window of the button: each server's step with a cross, «Отменить все» from two on; it goes away when the work ends.
-static void show(QWidget *parent) {
-    auto *dialog = new QDialog(parent);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->setWindowTitle(QStringLiteral("Установка серверов"));
-    dialog->setMinimumWidth(460);
-    auto *layout = new QVBoxLayout(dialog);
-    auto *list = new QWidget(dialog);
-    auto *rows = new QVBoxLayout(list);
-    rows->setContentsMargins(0, 0, 0, 0);
-    layout->addWidget(list);
-    auto *all = new QPushButton(QStringLiteral("Отменить все"), dialog);
-    layout->addWidget(all);
-    QObject::connect(all, &QPushButton::clicked, dialog, [] { for (const auto &job : QList<Job>(jobs)) if (job.task) job.task->cancel(); });
-    const auto refresh = [=] {
-        if (jobs.isEmpty()) { dialog->close(); return; }
-        while (auto *item = rows->takeAt(0)) { delete item->widget(); delete item; }
-        for (const auto &job : jobs) {
-            auto *row = new QWidget(list);
-            auto *line = new QHBoxLayout(row);
-            line->setContentsMargins(0, 0, 0, 0);
-            auto *text = new QVBoxLayout;
-            auto *title = new QLabel(QStringLiteral("<b>%1</b><br>%2").arg(job.title.toHtmlEscaped(), job.step.toHtmlEscaped()), row);
-            text->addWidget(title);
-            auto *bar = new QProgressBar(row);
-            bar->setRange(0, 100);
-            bar->setValue(job.percent);
-            text->addWidget(bar);
-            line->addLayout(text, 1);
-            auto *cross = new QPushButton(QStringLiteral("✕"), row);
-            cross->setToolTip(QStringLiteral("Отменить установку"));
-            auto *task = job.task;
-            QObject::connect(cross, &QPushButton::clicked, row, [task] { if (task) task->cancel(); });
-            line->addWidget(cross);
-            rows->addWidget(row);
-        }
-        all->setVisible(jobs.size() >= 2);
-    };
-    const int token = nextWatcher++;
-    watchers[token] = refresh;
-    QObject::connect(dialog, &QObject::destroyed, [token] { watchers.remove(token); });
-    refresh();
-    dialog->show();
-}
-}
-
-class ServerEditor : public QDialog {
-    friend bool ::SaveVKRelayPreviews(const QString &directory);
-    QJsonObject server;
-    QJsonObject savedState;
-    QMap<QString, QLineEdit *> fields;
-    QComboBox *auth;
-    QMap<QString, QComboBox *> choices;
-    QCheckBox *manual;
-    QCheckBox *docker = nullptr;
-    QPlainTextEdit *console;
-    QPlainTextEdit *configuration;
-    QProgressBar *progress;
-    QLabel *step;
-    RelayTask *task;
-    QPushButton *stopButton;
-    QPushButton *saveButton;
-    QPushButton *copyButton;
-    QWidget *shareArea;
-    bool busy = false;
-    // The QR code of the deploy link and, for qWDTT, its legacy wdtt:// form, from the server's fields.
-    void refreshShare() {
-        for (auto *child : shareArea->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly))
-            delete child;
-        const auto link = configuration->toPlainText();
-        if (link.isEmpty())
-            return;
-        shareArea->layout()->addWidget(ShareBlocks::Qr(shareArea, "QR-код ссылки", link));
-        if (server["kind"] == "qwdtt")
-            shareArea->layout()->addWidget(ShareBlocks::Text(shareArea, "Ссылка WDTT (легаси)",
-                "wdtt://" + server["host"].toString() + ":" + server["peerPort"].toString() + ":" +
-                (server["wgPort"].toString().isEmpty() ? QStringLiteral("56001") : server["wgPort"].toString()) +
-                ":9000:" + server["password"].toString() + ":"));
-    }
-    void setBusy(bool active) {
-        busy = active;
-        for (auto *widget : controls)
-            widget->setEnabled(!active);
-        stopButton->setEnabled(active);
-        updateDirty();
-    }
-    QJsonObject editableState() const {
-        auto state = server;
-        for (const auto &key : {"console", "status", "progress", "config", "hostKey", "adminPin"})
-            state.remove(key);
-        return state;
-    }
-    void updateDirty() {
-        capture();
-        saveButton->setEnabled(!busy && editableState() != savedState);
-    }
-    void applyConfiguration(const QJsonValue &value) {
-        server["config"] = normalizedRelayLink(value.toString());
-        configuration->setPlainText(server["config"].toString());
-        refreshShare();
-        rememberConsole();
-    }
-    QList<QWidget *> controls;
-    std::function<void(QJsonObject)> save;
-    std::function<void(QJsonObject)> checkpoint;
-    void rememberConsole(bool persist = true) {
-        server["console"] = console->toPlainText().right(200000);
-        server["status"] = step->text();
-        server["progress"] = QString::number(progress->value());
-        if (persist && checkpoint)
-            checkpoint(server);
-    }
-    void capture() {
-        const auto oldHost = server["host"].toString();
-        const auto oldPort = server["sshPort"].toString();
-        for (auto it = fields.begin(); it != fields.end(); ++it)
-            if (it.key() != "key")
-                server[it.key()] = it.value()->text();
-        server["auth"] = auth->currentData().toString();
-        if (server["auth"] == "password")
-            server["sudoPassword"] = "";
-        else
-            server["sshPassword"] = "";
-        for (const auto &key : {"host", "user", "sshPort"})
-            server[key] = server[key].toString().trimmed();
-        if (server["host"].toString() != oldHost || server["sshPort"].toString() != oldPort) {
-            server["hostKey"] = "";
-            server["adminPin"] = "";
-        }
-        server["manualPorts"] = manual->isChecked() ? "true" : "false";
-        if (docker)
-            server["docker"] = docker->isChecked() ? "true" : "false";
-        for (auto it = choices.cbegin(); it != choices.cend(); ++it) server[it.key()] = it.value()->currentData().toString();
-    }
-    void secrets() {
-        QDialog dialog(this);
-        dialog.setWindowTitle(server["kind"] == "mrtt" ? "Пароль владельца" : server["kind"] == "qwdtt" ? "Секреты (бот, пароли)" : server["kind"] == "wdttplus" ? "Главный пароль" : "Авторизация");
-        dialog.resize(640, 240);
-        dialog.setMinimumSize(560, 210);
-        auto *layout = new QVBoxLayout(&dialog);
-        auto *form = new QFormLayout;
-        form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-        layout->addLayout(form);
-        QMap<QString, QLineEdit *> edits;
-        QList<QPair<QString, QString>> keys{{"password", server["kind"] == "wdttplus" ? "Главный пароль (8–256 символов)" : "Пароль туннеля"}};
-        if (server["kind"] == "wdttplus")
-            keys += {{"dns", "DNS сервера (необязательно, через запятую)"}};
-        else if (server["kind"] == "qwdtt")
-            keys += {{"botToken", "Токен Telegram-бота (необязательно)"},
-                     {"adminId", "Telegram ID администратора (необязательно)"}};
-        else if (server["kind"] == "mrtt")
-            keys[0].second = "Пароль владельца";
-        else
-            keys += {{"webUser", "Логин веб-панели"}, {"webPassword", "Пароль веб-панели"}};
-        for (const auto &[key, label] : keys) {
-            auto *edit = new QLineEdit(server[key].toString(), &dialog);
-            edit->setObjectName("relaySecret_" + key);
-            if (key.contains("Token") || key.contains("assword"))
-                edit->setEchoMode(QLineEdit::Password);
-            if (key == "adminId")
-                edit->setValidator(new QRegularExpressionValidator(QRegularExpression("[0-9]*"), edit));
-            edits[key] = edit;
-            form->addRow(label, edit);
-        }
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-        layout->addWidget(buttons);
-        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        if (dialog.exec() == QDialog::Accepted) {
-            for (auto it = edits.begin(); it != edits.end(); ++it)
-                server[it.key()] = it.value()->text();
-            capture();
-            updateDirty();
-        }
-    }
-    void run(bool uninstall) {
-        if (task->running())
-            return;
-        // One operation per server: the same server may be open in another window.
-        if (server["kind"] == "mrtt" && MrttJobs::running(server["id"].toString())) {
-            step->setText(QStringLiteral("На этом сервере уже идёт операция"));
-            return;
-        }
-        capture();
-        if (uninstall &&
-            QMessageBox::question(this, "Удалить сервис с VPS",
-                                  "Удалить установленный сервис и его серверную конфигурацию с этого VPS?") !=
-                QMessageBox::Yes)
-            return;
-        if (!manual->isChecked()) {
-            const auto defaults = freshServer(server["kind"].toString());
-            for (const auto &key : {"peerPort", "wgPort", "rawPort", "directPort", "adminPort", "webPort", "localPort"})
-                server[key] = defaults[key];
-        }
-        console->clear();
-        progress->setValue(0);
-        setBusy(true);
-        const bool mrttJob = server["kind"] == "mrtt";
-        const auto jobId = server["id"].toString();
-        if (mrttJob) MrttJobs::add({jobId, server["name"].toString().isEmpty() ? server["host"].toString() : server["name"].toString(), QStringLiteral("Подключение"), 0, task});
-        auto requestServer = server;
-        for (const auto &key : {"console", "status", "progress"})
-            requestServer.remove(key);
-        task->start({{"operation", uninstall ? "uninstall" : "deploy"}, {"server", requestServer}},
-                    [this, mrttJob, jobId](const QJsonObject &event) {
-                        const auto type = event["type"].toString();
-                        const auto text = event["text"].toString();
-                        if (mrttJob && type == "progress") MrttJobs::update(jobId, text, event["value"].isDouble() ? event["value"].toInt() : -1);
-                        if (mrttJob && type == "finished") MrttJobs::remove(jobId);
-                        if (type == "trust")
-                            task->approve(QMessageBox::question(this, "SSH-ключ VPS",
-                                                                "Первое подключение к " + server["host"].toString() +
-                                                                    ".\n\n" + text + "\n\nДоверять этому ключу?") ==
-                                          QMessageBox::Yes);
-                        if (type == "host-key") {
-                            server["hostKey"] = text;
-                        }
-                        if (type == "admin-pin") {
-                            server["adminPin"] = text;
-                        }
-                        if (type == "log") {
-                            console->moveCursor(QTextCursor::End);
-                            console->insertPlainText(text);
-                        }
-                        if (type == "progress") {
-                            step->setText(text);
-                            if (event["value"].isDouble())
-                                progress->setValue(event["value"].toInt());
-                        }
-                        if (type == "config") {
-                            applyConfiguration(event["value"]);
-                        }
-                        if (type == "error") {
-                            step->setText(text);
-                            console->appendPlainText("Ошибка: " + text);
-                        }
-                        if (type == "finished") {
-                            setBusy(false);
-                            rememberConsole();
-                            updateDirty();
-                        }
-                    });
-    }
-
-  protected:
-    void closeEvent(QCloseEvent *event) override {
-        if (task->running()) {
-            if (QMessageBox::question(this, "Установка выполняется",
-                                      "Остановить SSH-операцию? Уже выполненные изменения на VPS сохранятся.") !=
-                QMessageBox::Yes) {
-                event->ignore();
-                return;
-            }
-            task->cancel();
-        }
-        rememberConsole();
-        QDialog::closeEvent(event);
-    }
-
-  public:
-    ServerEditor(QJsonObject value, std::function<void(QJsonObject)> callback, QWidget *parent,
-                 std::function<void(QJsonObject)> consoleCallback = {})
-        : QDialog(parent), server(std::move(value)), save(std::move(callback)), checkpoint(std::move(consoleCallback)) {
-        setWindowTitle("Управление сервером — " + kindTitle(server["kind"].toString()));
-        resize(760, 760);
-        task = new RelayTask(this);
-        auto *outer = new QVBoxLayout(this);
-        auto *scroll = new QScrollArea(this);
-        scroll->setWidgetResizable(true);
-        outer->addWidget(scroll);
-        auto *body = new QWidget(scroll);
-        scroll->setWidget(body);
-        auto *layout = new QVBoxLayout(body);
-        auto *secretsButton =
-            new QPushButton(server["kind"] == "mrtt" ? "Пароль владельца" : server["kind"] == "qwdtt" ? "Секреты (бот, пароли)" : server["kind"] == "wdttplus" ? "Главный пароль" : "Авторизация", body);
-        secretsButton->setObjectName("relaySecrets");
-        // FreeTurn's installer generates its own keys: there is nothing to enter.
-        secretsButton->setVisible(server["kind"] != "freeturn");
-        layout->addWidget(secretsButton);
-        controls.append(secretsButton);
-        connect(secretsButton, &QPushButton::clicked, this, [this] { secrets(); });
-        auto *actions = new QHBoxLayout;
-        layout->addLayout(actions);
-        auto *install = new QPushButton("Установить", body);
-        auto *remove = new QPushButton("Удалить сервис с VPS", body);
-        actions->addWidget(install);
-        actions->addWidget(remove);
-        controls += {install, remove};
-        connect(install, &QPushButton::clicked, this, [this] { run(false); });
-        connect(remove, &QPushButton::clicked, this, [this] { run(true); });
-        auto *group = new QGroupBox("Подключение к VPS", body);
-        layout->addWidget(group);
-        controls.append(group);
-        auto *form = new QFormLayout(group);
-        const auto add = [&](const QString &key, const QString &label, bool secret = false) {
-            auto *edit = new QLineEdit(server[key].toString(), group);
-            edit->setObjectName("relayField_" + key);
-            if (secret)
-                edit->setEchoMode(QLineEdit::Password);
-            fields[key] = edit;
-            form->addRow(label, edit);
-            return edit;
-        };
-        add("name", "Название сервера");
-        add("host", "IP / домен");
-        add("user", "Логин SSH");
-        add("sshPort", "Порт SSH");
-        auth = new QComboBox(group);
-        auth->setObjectName("relayAuth");
-        auth->addItem("Пароль", "password");
-        auth->addItem("SSH-ключ", "key");
-        auth->setCurrentIndex(server["auth"] == "key" ? 1 : 0);
-        form->addRow("Вход на сервер", auth);
-        auto *password = add("sshPassword", "Пароль SSH", true);
-        auto *key = add("key", "SSH-ключ");
-        key->setReadOnly(true);
-        key->setText(server["key"].toString().isEmpty() ? "Не привязан" : "Привязан");
-        key->setToolTip(server["keyName"].toString());
-        auto *loadKey = new QPushButton("Загрузить SSH-ключ…", group);
-        form->addRow("", loadKey);
-        auto *keyPassword = add("keyPassword", "Пароль SSH-ключа", true);
-        auto *sudoPassword = add("sudoPassword", "Пароль sudo (если требуется)", true);
-        connect(loadKey, &QPushButton::clicked, this, [this, key] {
-            const auto path = QFileDialog::getOpenFileName(this, "SSH-ключ");
-            if (!path.isEmpty()) {
-                const auto bytes = ReadFileText(path);
-                if (bytes.isEmpty()) {
-                    QMessageBox::warning(this, "SSH-ключ", "Не удалось прочитать файл");
-                    return;
-                }
-                server["key"] = bytes;
-                server["keyName"] = QFileInfo(path).fileName();
-                key->setText("Привязан");
-                key->setToolTip(server["keyName"].toString());
-            }
-        });
-        const auto authVisibility = [this, password, sudoPassword, key, keyPassword, loadKey, form] {
-            const bool useKey = auth->currentData() == "key";
-            for (auto *edit : {key, keyPassword, sudoPassword}) {
-                edit->setVisible(useKey);
-                form->labelForField(edit)->setVisible(useKey);
-            }
-            loadKey->setVisible(useKey);
-            password->setVisible(!useKey);
-            form->labelForField(password)->setVisible(!useKey);
-        };
-        connect(auth, &QComboBox::currentIndexChanged, this, authVisibility);
-        authVisibility();
-        if (server["kind"] == "qwdtt") {
-            add("dns1", "DNS 1");
-            add("dns2", "DNS 2");
-        }
-        if (server["kind"] == "freeturn") {
-            const auto choice = [&](const QString &key, const QString &label, const QList<QPair<QString, QString>> &items) {
-                auto *box = new QComboBox(group);
-                for (const auto &[value, title] : items) box->addItem(title, value);
-                box->setCurrentIndex(qMax(0, box->findData(server[key].toString())));
-                choices[key] = box;
-                form->addRow(label, box);
-                controls.append(box);
-                return box;
-            };
-            auto *backend = choice("ftBackend", "VPN на сервере", {{"new", "Новый WireGuard"}, {"external", "Уже установлен"}});
-            auto *connectAddress = add("ftConnect", "Адрес VPN на сервере (хост:порт)");
-            auto *mode = choice("ftMode", "Протокол VPN", {{"udp", "UDP: WireGuard"}, {"tcp", "TCP: Xray"}});
-            const auto externalVisibility = [=] {
-                const bool external = backend->currentData() == "external";
-                for (QWidget *widget : {static_cast<QWidget *>(connectAddress), static_cast<QWidget *>(mode)}) {
-                    widget->setVisible(external);
-                    form->labelForField(widget)->setVisible(external);
-                }
-            };
-            connect(backend, &QComboBox::currentIndexChanged, this, externalVisibility);
-            externalVisibility();
-            choice("ftMethod", "Запуск", {{"docker", "Docker"}, {"systemd", "systemd"}});
-            choice("ftObf", "Обфускация", {{"rtpopus3", "rtpopus3"}, {"rtpopus2", "rtpopus2"}, {"none", "Нет"}});
-        }
-        manual = new QCheckBox("Ручное управление портами", group);
-        manual->setObjectName("relayManualPorts");
-        manual->setChecked(server["manualPorts"] == "true");
-        form->addRow(manual);
-        QStringList ports{"peerPort"};
-        QStringList labels{server["kind"] == "csqtt" || server["kind"] == "mrtt" || server["kind"] == "freeturn" ? "Порт туннеля" : "Порт DTLS"};
-        if (server["kind"] == "qwdtt") {
-            ports += {"wgPort", "directPort", "rawPort"};
-            labels += {"Порт WireGuard", "Прямой порт", "Порт RAW"};
-        } else if (server["kind"] == "freeturn") {
-            ports.append("wgPort");
-            labels.append("Порт WireGuard");
-        } else if (server["kind"] == "wdttplus") {
-            ports += {"wgPort", "localPort"};
-            labels += {"Порт WG", "Локальный порт"};
-        } else {
-            ports.append("webPort");
-            // MRTT's API listens on 127.0.0.1 only and is reached through SSH.
-            labels.append(server["kind"] == "mrtt" ? "Порт API" : "Порт веб-панели");
-        }
-        for (int i = 0; i < ports.size(); ++i) {
-            auto *edit = add(ports[i], labels[i]);
-            const auto visible = [edit, form](bool checked) {
-                edit->setVisible(checked);
-                form->labelForField(edit)->setVisible(checked);
-            };
-            visible(manual->isChecked());
-            connect(manual, &QCheckBox::toggled, edit, visible);
-        }
-        if (server["kind"] == "csqtt" || server["kind"] == "mrtt") {
-            docker = new QCheckBox("Установить в Docker", group);
-            docker->setChecked(server["docker"] == "true");
-            form->addRow(docker);
-        }
-        auto *consoleGroup = new QGroupBox("Консоль", body);
-        layout->addWidget(consoleGroup);
-        auto *consoleLayout = new QVBoxLayout(consoleGroup);
-        step = new QLabel(server["status"].toString("Готово к подключению"), consoleGroup);
-        consoleLayout->addWidget(step);
-        progress = new QProgressBar(consoleGroup);
-        progress->setValue(qBound(0, server["progress"].toString().toInt(), 100));
-        consoleLayout->addWidget(progress);
-        console = new QPlainTextEdit(consoleGroup);
-        console->setObjectName("relayConsole");
-        console->setReadOnly(true);
-        console->setMaximumBlockCount(4000);
-        console->setMinimumHeight(180);
-        console->setPlainText(server["console"].toString());
-        consoleLayout->addWidget(console);
-        stopButton = new QPushButton("Остановить", consoleGroup);
-        stopButton->setObjectName("relayStop");
-        stopButton->setEnabled(false);
-        consoleLayout->addWidget(stopButton);
-        connect(stopButton, &QPushButton::clicked, task, &RelayTask::cancel);
-        auto *configGroup = new QGroupBox("Ссылка " + kindTitle(server["kind"].toString()), body);
-        layout->addWidget(configGroup);
-        auto *configLayout = new QVBoxLayout(configGroup);
-        configuration = new QPlainTextEdit(normalizedRelayLink(server["config"].toString()), configGroup);
-        configuration->setReadOnly(true);
-        configuration->setPlaceholderText("Ссылка появится после успешной установки");
-        configuration->setMaximumHeight(90);
-        configLayout->addWidget(configuration);
-        copyButton = new QPushButton("Копировать", configGroup);
-        copyButton->setEnabled(!configuration->toPlainText().isEmpty());
-        configLayout->addWidget(copyButton);
-        connect(configuration, &QPlainTextEdit::textChanged, this,
-                [this] { copyButton->setEnabled(!configuration->toPlainText().isEmpty()); });
-        connect(copyButton, &QPushButton::clicked, this,
-                [this] { QApplication::clipboard()->setText(configuration->toPlainText()); });
-        shareArea = new QWidget(configGroup);
-        new QVBoxLayout(shareArea);
-        shareArea->layout()->setContentsMargins(0, 0, 0, 0);
-        configLayout->addWidget(shareArea);
-        refreshShare();
-        auto *buttons = new QHBoxLayout;
-        buttons->addStretch();
-        saveButton = new QPushButton("Сохранить", this);
-        saveButton->setObjectName("relaySave");
-        buttons->addWidget(saveButton);
-        outer->addLayout(buttons);
-        controls.append(saveButton);
-        connect(saveButton, &QPushButton::clicked, this, [this] {
-            capture();
-            rememberConsole(false);
-            if (!QRegularExpression("^[A-Za-z0-9.:_-]+$").match(server["host"].toString()).hasMatch() ||
-                !QRegularExpression("^[A-Za-z0-9_.-]+$").match(server["user"].toString()).hasMatch()) {
-                QMessageBox::warning(this, "VPS", "Укажите IP или домен без схемы и порта, а также логин SSH");
-                return;
-            }
-            save(server);
-            savedState = editableState();
-            updateDirty();
-        });
-        capture();
-        savedState = editableState();
-        saveButton->setEnabled(false);
-        for (auto *edit : fields)
-            connect(edit, &QLineEdit::textChanged, this, [this] { updateDirty(); });
-        connect(auth, &QComboBox::currentIndexChanged, this, [this] { updateDirty(); });
-        connect(manual, &QCheckBox::toggled, this, [this] { updateDirty(); });
-        if (docker)
-            connect(docker, &QCheckBox::toggled, this, [this] { updateDirty(); });
-    }
-};
 
 // A press held on a row starts selection, as a long tap does on the phone.
 class LongPress : public QObject {
@@ -1155,99 +573,41 @@ void ShowHashGenerator(QWidget *parent) {
 
 bool SaveVKRelayPreviews(const QString &directory) {
     int saves = 0;
+    const auto save = [&saves](const QJsonObject &) { ++saves; };
     {
-        ServerEditor draft(freshServer("qwdtt"), [&](QJsonObject) { ++saves; }, nullptr);
-        draft.close();
+        // A new server opens on its connection screen and is not stored before it connects.
+        QPointer<QDialog> dialog = OpenPanelDeploy(nullptr, NewPanelServer(), save);
+        auto *pages = dialog->findChild<QStackedWidget *>();
+        if (!pages || pages->count() != 9 || pages->currentIndex() != 0) return false;
+        QPushButton *next = nullptr;
+        for (auto *button : dialog->findChildren<QPushButton *>())
+            if (button->text() == "Далее") next = button;
+        if (!next || !next->isEnabled()) return false;
+        next->click();
+        if (pages->currentIndex() != 0 || saves != 0) return false;
+        dialog->close();
+        if (dialog) delete dialog;
     }
-    if (saves != 0)
-        return false;
+    QJsonObject installed = NewPanelServer();
+    for (const auto &[key, text] : QList<QPair<QString, QString>>{{"host", "203.0.113.20"}, {"connectedHost", "203.0.113.20"}, {"connectedPort", "22"},
+                                                                  {"installedRole", "combined"}, {"mode", "nginx"}, {"installedDomain", "panel.example.org"},
+                                                                  {"panelUrl", "https://panel.example.org/Abcdefghijklmnopq/"}, {"panelUser", "admin"},
+                                                                  {"panelPassword", "secret-password"}, {"installedProtocols", "wdtt,qwdtt,dnstt"}, {"version", "1.4.83"}})
+        installed[key] = text;
     {
-        auto value = freshServer("csqtt");
-        value["host"] = "203.0.113.1";
-        value["hostKey"] = "old-fingerprint";
-        value["sshPassword"] = "password-login";
-        value["sudoPassword"] = "key-sudo";
-        value["console"] = "Результат предыдущего деплоя";
-        QJsonObject stored;
-        ServerEditor draft(
-            value,
-            [&](QJsonObject item) {
-                ++saves;
-                stored = item;
-            },
-            nullptr);
-        auto *saveButton = draft.findChild<QPushButton *>("relaySave");
-        auto *stop = draft.findChild<QPushButton *>("relayStop");
-        if (!saveButton || !stop || saveButton->isEnabled() || stop->isEnabled() ||
-            !qobject_cast<QGroupBox *>(stop->parentWidget()))
-            return false;
-        auto *auth = draft.findChild<QComboBox *>("relayAuth");
-        auto *sudoPassword = draft.findChild<QLineEdit *>("relayField_sudoPassword");
-        auto *sshPassword = draft.findChild<QLineEdit *>("relayField_sshPassword");
-        auto *ports = draft.findChild<QCheckBox *>("relayManualPorts");
-        auto *peerPort = draft.findChild<QLineEdit *>("relayField_peerPort");
-        auto *key = draft.findChild<QLineEdit *>("relayField_key");
-        auto *keyPassword = draft.findChild<QLineEdit *>("relayField_keyPassword");
-        auto *form = qobject_cast<QFormLayout *>(key->parentWidget()->layout());
-        if (!form || form->indexOf(auth) >= form->indexOf(key) || form->indexOf(key) >= form->indexOf(keyPassword) ||
-            form->indexOf(keyPassword) >= form->indexOf(sudoPassword))
-            return false;
-        auto *console = draft.findChild<QPlainTextEdit *>("relayConsole");
-        if (!console || console->toPlainText() != value["console"].toString())
-            return false;
-        console->setPlainText("Новый результат деплоя");
-        draft.findChild<QLineEdit *>("relayField_name")->setText("Изменённый сервер");
-        if (!saveButton->isEnabled())
-            return false;
-        draft.setBusy(true);
-        if (!stop->isEnabled() || saveButton->isEnabled())
-            return false;
-        draft.setBusy(false);
-        if (stop->isEnabled() || !saveButton->isEnabled())
-            return false;
-        if (!sudoPassword->isHidden() || sshPassword->isHidden() || !peerPort->isHidden())
-            return false;
-        saveButton->click();
-        if (saveButton->isEnabled())
-            return false;
-        if (!stored["sudoPassword"].toString().isEmpty())
-            return false;
-        auth->setCurrentIndex(1);
-        ports->setChecked(true);
-        if (sudoPassword->isHidden() || !sshPassword->isHidden() || peerPort->isHidden())
-            return false;
-        draft.findChild<QLineEdit *>("relayField_host")->setText("203.0.113.2");
-        saveButton->click();
-        if (!stored["sshPassword"].toString().isEmpty() || !stored["hostKey"].toString().isEmpty())
-            return false;
-        draft.close();
-        ServerEditor reopened(stored, [&](QJsonObject) { ++saves; }, nullptr);
-        if (reopened.findChild<QPlainTextEdit *>("relayConsole")->toPlainText() != "Новый результат деплоя")
-            return false;
-        reopened.close();
+        // An installed server opens on its page: the password stays hidden until shown.
+        QPointer<QDialog> dialog = OpenPanelDeploy(nullptr, installed, save);
+        auto *pages = dialog->findChild<QStackedWidget *>();
+        if (!pages || pages->currentIndex() != 8) return false;
+        for (int i = 0; i < 4; ++i) QApplication::processEvents();
+        bool hidden = false;
+        for (auto *edit : dialog->findChildren<QLineEdit *>())
+            if (edit->text() == "secret-password" && edit->isVisible()) hidden = edit->echoMode() == QLineEdit::Password;
+        if (!hidden) return false;
+        dialog->close();
+        if (dialog) delete dialog;
     }
-    if (saves != 2)
-        return false;
-    {
-        auto stored = freshServer("qwdtt");
-        stored["host"] = "203.0.113.10";
-        stored["config"] = "qwdtt://old-deployment";
-        int explicitSaves = 0;
-        ServerEditor editor(
-            stored, [&](QJsonObject) { ++explicitSaves; }, nullptr,
-            [&](QJsonObject state) {
-                for (const auto &key : {"console", "status", "progress", "config"})
-                    stored[key] = state[key];
-            });
-        editor.applyConfiguration(QString());
-        editor.close();
-        ServerEditor reopened(stored, [](QJsonObject) {}, nullptr);
-        if (explicitSaves != 0 || reopened.copyButton->isEnabled() || !stored["config"].toString().isEmpty() ||
-            !reopened.configuration->toPlainText().isEmpty())
-            return false;
-    }
-    if (directory.isEmpty())
-        return true;
+    if (directory.isEmpty()) return true;
     QDir().mkpath(directory);
     const auto previousTheme = themeManager()->current_theme;
     bool saved = true;
@@ -1255,47 +615,21 @@ bool SaveVKRelayPreviews(const QString &directory) {
         themeManager()->ApplyTheme(theme, true);
         const auto snapshot = [&](QWidget &widget, const QString &name) {
             widget.show();
-            for (int i = 0; i < 6; ++i)
-                QApplication::processEvents();
+            for (int i = 0; i < 6; ++i) QApplication::processEvents();
             saved = widget.grab().save(directory + "/vk-" + name + "-" + theme + ".png") && saved;
         };
         {
             DialogVKRelay dialog;
             snapshot(dialog, "account");
-            saved = dialog.size() == QSize(860, 600) && dialog.findChildren<QDialogButtonBox *>().isEmpty() && saved;
-            for (auto *edit : dialog.findChildren<QLineEdit *>())
-                if (!qobject_cast<QSpinBox *>(edit->parentWidget()))
-                    saved = false;
             auto *tabs = dialog.findChild<QTabWidget *>();
-            for (int i = 1; i < 3; ++i) {
-                tabs->setCurrentIndex(i);
-                snapshot(dialog, i == 1 ? "qwdtt-list" : "csqtt-list");
-                saved = dialog.size() == QSize(860, 600) && saved;
-            }
+            tabs->setCurrentIndex(tabs->count() - 1);
+            snapshot(dialog, "deploy-list");
         }
-        for (const QString kind : {QStringLiteral("qwdtt"), QStringLiteral("csqtt")}) {
-            ServerEditor editor(freshServer(kind), [](QJsonObject) {}, nullptr);
-            snapshot(editor, kind + "-deploy");
-            editor.findChild<QComboBox *>("relayAuth")->setCurrentIndex(1);
-            snapshot(editor, kind + "-ssh-key");
-            QTimer::singleShot(0, &editor, [&] {
-                auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-                if (!dialog) {
-                    saved = false;
-                    return;
-                }
-                snapshot(*dialog, kind + "-secrets");
-                if (dialog->findChild<QLineEdit *>("relaySecret_adminToken") ||
-                    dialog->findChild<QLineEdit *>("relaySecret_deviceId"))
-                    saved = false;
-                dialog->reject();
-            });
-            editor.findChild<QPushButton *>("relaySecrets")->click();
-        }
-        {
-            EditQWDTT editor;
-            editor.resize(760, 760);
-            snapshot(editor, "qwdtt-manual");
+        for (const auto &[name, server] : QList<QPair<QString, QJsonObject>>{{"deploy-connect", NewPanelServer()}, {"deploy-server", installed}}) {
+            QPointer<QDialog> dialog = OpenPanelDeploy(nullptr, server, save);
+            snapshot(*dialog, name);
+            dialog->close();
+            if (dialog) delete dialog;
         }
     }
     themeManager()->ApplyTheme(previousTheme, true);
@@ -1452,23 +786,26 @@ DialogVKRelay::DialogVKRelay(QWidget *parent) : QDialog(parent) {
     });
     connect(this, &QDialog::finished, maxTask, &RelayTask::cancel);
     auto *storeTask = new RelayTask(this);
+    // Every saved VPS, including entries of the earlier per-protocol deploy: they stay stored, the list shows panel servers.
     auto servers = std::make_shared<QJsonArray>();
-    auto lists = std::make_shared<QMap<QString, QListWidget *>>();
-    auto pages = std::make_shared<QList<QWidget *>>();
-    const auto refresh = [servers, lists] {
-        for (auto it = lists->begin(); it != lists->end(); ++it) {
-            it.value()->clear();
-            for (const auto &entry : *servers) {
-                const auto server = entry.toObject();
-                if (server["kind"] != it.key())
-                    continue;
-                auto *item =
-                    new QListWidgetItem(server["name"].toString() + " — " + server["host"].toString(), it.value());
-                item->setData(Qt::UserRole, server["id"]);
-            }
+    auto *deployList = new QListWidget;
+    const auto refresh = [servers, deployList] {
+        deployList->clear();
+        for (const auto &entry : *servers) {
+            const auto server = entry.toObject();
+            if (server["kind"] != "panel") continue;
+            const auto name = server["name"].toString();
+            auto *item = new QListWidgetItem(name.isEmpty() ? server["host"].toString() : name + " (" + server["host"].toString() + ")", deployList);
+            item->setData(Qt::UserRole, server["id"]);
         }
     };
-    const auto persist = [=](QJsonObject server) {
+    const auto writeServers = [=] {
+        storeTask->start({{"operation", "secret-set"}, {"id", "servers"}, {"value", QString::fromUtf8(QJsonDocument(*servers).toJson(QJsonDocument::Compact))}},
+                         [=](const QJsonObject &event) {
+                             if (event["type"] == "error") status->setText(event["text"].toString());
+                         });
+    };
+    const auto persist = [=](const QJsonObject &server) {
         bool found = false;
         for (int i = 0; i < servers->size(); ++i)
             if ((*servers)[i].toObject()["id"] == server["id"]) {
@@ -1476,33 +813,9 @@ DialogVKRelay::DialogVKRelay(QWidget *parent) : QDialog(parent) {
                 found = true;
                 break;
             }
-        if (!found)
-            servers->append(server);
+        if (!found) servers->append(server);
         refresh();
-        storeTask->start({{"operation", "secret-set"},
-                          {"id", "servers"},
-                          {"value", QString::fromUtf8(QJsonDocument(*servers).toJson(QJsonDocument::Compact))}},
-                         [=](const QJsonObject &event) {
-                             if (event["type"] == "error")
-                                 status->setText(event["text"].toString());
-                         });
-    };
-    const auto checkpoint = [=](const QJsonObject &state) {
-        for (const auto &entry : *servers) {
-            auto stored = entry.toObject();
-            if (stored["id"] != state["id"])
-                continue;
-            for (const auto &key : {"console", "status", "progress"})
-                stored[key] = state[key];
-            const bool sameEndpoint = stored["host"] == state["host"] && stored["sshPort"] == state["sshPort"];
-            if (sameEndpoint || state["config"].toString().isEmpty())
-                stored["config"] = state["config"];
-            if (sameEndpoint)
-                for (const auto &key : {"hostKey", "adminPin"})
-                    stored[key] = state[key];
-            persist(stored);
-            return;
-        }
+        writeServers();
     };
     {
         // The mode each relay protocol takes when a link or a new profile names none.
@@ -1530,71 +843,43 @@ DialogVKRelay::DialogVKRelay(QWidget *parent) : QDialog(parent) {
         choice("CSQTT: режим SRTP", settings.relay_default_csqtt_srtp, {{"auto", "Автоматически (по умолчанию)"}, {"wrap", "WRAP-SRTP"}, {"dtls", "DTLS-SRTP"}});
         choice("MRTT: транспорт TURN", settings.relay_default_mrtt_transport, {{"udp", "UDP (по умолчанию)"}, {"tcp_tls", "TCP/TLS"}});
     }
-    for (const auto &kind : {QString("mrtt"), QString("qwdtt"), QString("csqtt"), QString("wdttplus"), QString("freeturn")}) {
+    {
         auto *page = new QWidget(tabs);
+        page->setObjectName("panelDeployPage");
         page->setEnabled(false);
-        pages->append(page);
-        tabs->addTab(page, "Деплой " + kindTitle(kind));
+        tabs->addTab(page, "Деплой");
         auto *pageLayout = new QVBoxLayout(page);
-        if (kind == "mrtt") {
-            // A turning circle at the top right, only while installs run; a click opens their window.
-            auto *jobsButton = new MrttJobs::Spinner(page);
-            jobsButton->hide();
-            auto *top = new QHBoxLayout;
-            top->addStretch();
-            top->addWidget(jobsButton);
-            pageLayout->addLayout(top);
-            connect(jobsButton, &MrttJobs::Spinner::clicked, this, [this] { MrttJobs::show(this); });
-            const int token = MrttJobs::nextWatcher++;
-            MrttJobs::watchers[token] = [jobsButton] {
-                jobsButton->setToolTip(QStringLiteral("Установка серверов: %1").arg(MrttJobs::jobs.size()));
-                jobsButton->setVisible(!MrttJobs::jobs.isEmpty());
-            };
-            MrttJobs::watchers[token]();
-            connect(this, &QObject::destroyed, [token] { MrttJobs::watchers.remove(token); });
-        }
-        auto *group = new QGroupBox("VPS для деплоя", page);
-        pageLayout->addWidget(group);
-        auto *groupLayout = new QVBoxLayout(group);
-        auto *list = new QListWidget(group);
-        groupLayout->addWidget(list);
-        (*lists)[kind] = list;
-        const auto open = [=, this](QJsonObject server) {
-            auto *editor = new ServerEditor(server, persist, this, checkpoint);
-            editor->setAttribute(Qt::WA_DeleteOnClose);
-            // MRTT installs run side by side: its windows do not block each other or the status button.
-            if (server["kind"] != "mrtt") editor->setWindowModality(Qt::WindowModal);
-            editor->show();
+        auto *intro = new QLabel("Rawline устанавливает на VPS WDTT Panel и ноду с VPN-протоколами. Протоколы, пользователи и подписки "
+                                 "настраиваются в самой панели, здесь доступны адрес панели, вход и удаление.", page);
+        intro->setWordWrap(true);
+        pageLayout->addWidget(intro);
+        deployList->setParent(page);
+        pageLayout->addWidget(deployList, 1);
+        const auto open = [=, this](const QJsonValue &id) {
+            for (const auto &entry : *servers)
+                if (entry.toObject()["id"] == id) {
+                    OpenPanelDeploy(this, entry.toObject(), persist);
+                    return;
+                }
         };
-        // A saved server opens its menu; "Управление сервером" there is this deploy editor.
-        connect(list, &QListWidget::itemDoubleClicked, this, [=, this](QListWidgetItem *item) {
-            const auto id = item->data(Qt::UserRole).toJsonValue();
-            const auto current = [servers, id] {
-                for (const auto &entry : *servers)
-                    if (entry.toObject()["id"] == id) return entry.toObject();
-                return QJsonObject();
-            };
-            if (current().isEmpty()) return;
-            OpenServerMenu(this, current, [=] { if (const auto s = current(); !s.isEmpty()) open(s); });
-        });
+        connect(deployList, &QListWidget::itemActivated, this, [=](QListWidgetItem *item) { open(item->data(Qt::UserRole).toJsonValue()); });
         auto *buttons = new QHBoxLayout;
         pageLayout->addLayout(buttons);
-        auto *add = new QPushButton("Добавить VPS для деплоя", page);
+        auto *add = new QPushButton("Добавить VPS", page);
+        auto *openButton = new QPushButton("Открыть", page);
         auto *remove = new QPushButton("Удалить из списка", page);
         buttons->addWidget(add);
+        buttons->addWidget(openButton);
+        buttons->addStretch();
         buttons->addWidget(remove);
-        connect(add, &QPushButton::clicked, this, [=] {
-            const auto server = freshServer(kind);
-            open(server);
+        connect(add, &QPushButton::clicked, this, [=, this] { OpenPanelDeploy(this, NewPanelServer(), persist); });
+        connect(openButton, &QPushButton::clicked, this, [=] {
+            if (auto *item = deployList->currentItem()) open(item->data(Qt::UserRole).toJsonValue());
         });
         connect(remove, &QPushButton::clicked, this, [=, this] {
-            auto *item = list->currentItem();
-            if (!item)
-                return;
-            if (QMessageBox::question(this, "Удалить из списка",
-                                      "Удалить запись VPS? Установленный сервис на сервере останется.") !=
-                QMessageBox::Yes)
-                return;
+            auto *item = deployList->currentItem();
+            if (!item) return;
+            if (QMessageBox::question(this, "Удалить из списка", "Удалить VPS из списка? Панель и нода на сервере останутся.") != QMessageBox::Yes) return;
             const auto id = item->data(Qt::UserRole).toJsonValue();
             for (int i = 0; i < servers->size(); ++i)
                 if ((*servers)[i].toObject()["id"] == id) {
@@ -1602,31 +887,23 @@ DialogVKRelay::DialogVKRelay(QWidget *parent) : QDialog(parent) {
                     break;
                 }
             refresh();
-            storeTask->start({{"operation", "secret-set"},
-                              {"id", "servers"},
-                              {"value", QString::fromUtf8(QJsonDocument(*servers).toJson(QJsonDocument::Compact))}},
-                             [=](const QJsonObject &event) {
-                                 if (event["type"] == "error")
-                                     status->setText(event["text"].toString());
-                             });
+            writeServers();
+        });
+        storeTask->start({{"operation", "secret-get"}, {"id", "servers"}}, [=](const QJsonObject &event) {
+            if (event["type"] == "result") {
+                const auto raw = event["value"].toString().toUtf8();
+                const auto doc = QJsonDocument::fromJson(raw);
+                if (!raw.isEmpty() && !doc.isArray()) {
+                    status->setText("Не удалось прочитать список серверов");
+                    return;
+                }
+                *servers = doc.array();
+                refresh();
+                page->setEnabled(true);
+            }
+            if (event["type"] == "error") status->setText(event["text"].toString());
         });
     }
-    storeTask->start({{"operation", "secret-get"}, {"id", "servers"}}, [=](const QJsonObject &event) {
-        if (event["type"] == "result") {
-            const auto raw = event["value"].toString().toUtf8();
-            const auto doc = QJsonDocument::fromJson(raw);
-            if (!raw.isEmpty() && !doc.isArray()) {
-                status->setText("Не удалось прочитать список серверов");
-                return;
-            }
-            *servers = doc.array();
-            refresh();
-            for (auto *page : *pages)
-                page->setEnabled(true);
-        }
-        if (event["type"] == "error")
-            status->setText(event["text"].toString());
-    });
     layout->addWidget(status);
     connect(this, &QDialog::finished, accountTask, &RelayTask::cancel);
 }

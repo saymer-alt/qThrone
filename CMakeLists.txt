@@ -367,10 +367,8 @@ set(PROJECT_SOURCES
         src/configs/outbounds/wdttplus.cpp
         src/ui/utils/ShareBlocks.cpp
         include/ui/utils/ShareBlocks.h
-        src/ui/setting/dialog_servers.cpp
-        include/ui/setting/dialog_servers.h
-        src/ui/setting/dialog_wdttplus_exit.cpp
-        include/ui/setting/dialog_wdttplus_exit.h
+        src/ui/setting/dialog_panel_deploy.cpp
+        include/ui/setting/dialog_panel_deploy.h
         src/configs/outbounds/openflux.cpp
         src/configs/outbounds/olcrtc.cpp
         src/configs/outbounds/dnstunnel.cpp

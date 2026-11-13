@@ -79,7 +79,8 @@ func Run(input io.Reader, output io.Writer) (err error) {
 				return
 			}
 		}
-		if r.Operation == "wdttplus-bootstrap" {
+		// Without its window nobody waits for these: a closed stdin stops them.
+		if r.Operation == "wdttplus-bootstrap" || r.Operation == "panel" {
 			cancel()
 		}
 	}()
@@ -114,31 +115,8 @@ func Run(input io.Reader, output io.Writer) (err error) {
 		if err == keyring.ErrNotFound {
 			err = nil
 		}
-	case "deploy", "uninstall":
-		err = p.deploy(r)
-	case "qwdtt-admin", "wdttplus-admin", "wdttplus-backup-export", "wdttplus-exit", "freeturn-admin", "mrtt-admin":
-		// Server management of a deployed server; SSH only with the host key remembered at deploy.
-		for _, k := range []string{"sshPassword", "key", "keyPassword", "sudoPassword", "password", "adminToken"} {
-			p.secrets = append(p.secrets, r.Server[k])
-		}
-		var value any
-		switch r.Operation {
-		case "qwdtt-admin":
-			value, err = p.qwdttAdmin(r.Server, r.Value)
-		case "wdttplus-admin":
-			value, err = p.wdttPlusAdmin(r.Server, r.Value)
-		case "freeturn-admin":
-			value, err = p.freeturnAdmin(r.Server, r.Value)
-		case "mrtt-admin":
-			value, err = p.mrttAdmin(r.Server, r.Value)
-		case "wdttplus-exit":
-			value, err = p.wdttPlusExit(r.Server, r.Value)
-		default:
-			value, err = p.wdttPlusBackupExport(r.Server, r.Value)
-		}
-		if err == nil {
-			p.emit("result", "", value)
-		}
+	case "panel":
+		err = p.panel(r)
 	case "provider-decrypt":
 		var decrypted map[string]string
 		decrypted, err = decryptProviderLink(r.Value)

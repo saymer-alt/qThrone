@@ -3,22 +3,16 @@ package relay
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
-	"fmt"
-	"github.com/pkg/sftp"
-	"github.com/zalando/go-keyring"
-	"golang.org/x/crypto/ssh"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/zalando/go-keyring"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -43,39 +37,6 @@ func TestFingerprintEventsPreserveShortSecretCharacters(t *testing.T) {
 		if i == 3 && event.Text != "password=[скрыто]" {
 			t.Fatal("Console secret was not redacted")
 		}
-	}
-}
-
-func TestUploadReplacesLongerSecret(t *testing.T) {
-	local, remote := net.Pipe()
-	defer local.Close()
-	defer remote.Close()
-	_ = local.SetDeadline(time.Now().Add(10 * time.Second))
-	_ = remote.SetDeadline(time.Now().Add(10 * time.Second))
-	server, e := sftp.NewServer(remote, sftp.WithServerWorkingDirectory(t.TempDir()))
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer server.Close()
-	go func() { _ = server.Serve() }()
-	client, e := sftp.NewClientPipe(local, local)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer client.Close()
-	for _, value := range []string{"previous-long-password-that-must-not-remain", "new"} {
-		if e = uploadFile(client, "secret.txt", []byte(value)); e != nil {
-			t.Fatal(e)
-		}
-	}
-	file, e := client.Open("secret.txt")
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer file.Close()
-	data, e := io.ReadAll(file)
-	if e != nil || string(data) != "new" {
-		t.Fatalf("Secret was not replaced completely: %q, %v", data, e)
 	}
 }
 
@@ -304,20 +265,7 @@ func TestVKHTTPRateLimit(t *testing.T) {
 		t.Fatal("HTTP rate limit did not engage VK cooldown")
 	}
 }
-func validServer() map[string]string {
-	return map[string]string{"kind": "qwdtt", "host": "127.0.0.1", "user": "root", "auth": "password", "sshPassword": "secret", "sshPort": "22", "peerPort": "56000", "wgPort": "56001", "directPort": "56002", "rawPort": "56003", "adminPort": "56002", "password": "tunnel", "adminToken": "admin", "dns1": "1.1.1.1", "dns2": "1.0.0.1"}
-}
-func TestDeployInput(t *testing.T) {
-	if e := validateServer(validServer(), true); e != nil {
-		t.Fatal(e)
-	}
-	for key, value := range map[string]string{"kind": "other", "host": "127.0.0.1;id", "user": "root;id", "peerPort": "65536", "sshPort": "22;id", "dns1": "1.1.1.999", "password": "bad\nvalue", "adminToken": "bad\x00value"} {
-		s := validServer()
-		s[key] = value
-		if validateServer(s, true) == nil {
-			t.Fatalf("Accepted invalid %s", key)
-		}
-	}
+func TestShellQuote(t *testing.T) {
 	if quote("a'b") != "'a'\"'\"'b'" {
 		t.Fatal("Shell quote")
 	}
@@ -331,107 +279,5 @@ func TestSplitSecretsAreRedacted(t *testing.T) {
 	w.flush()
 	if strings.Contains(output.String(), "private-") || !strings.Contains(output.String(), "[скрыто]") {
 		t.Fatal(output.String())
-	}
-}
-
-func TestHostVerificationBeforePassword(t *testing.T) {
-	_, private, e := ed25519.GenerateKey(rand.Reader)
-	if e != nil {
-		t.Fatal(e)
-	}
-	signer, e := ssh.NewSignerFromKey(private)
-	if e != nil {
-		t.Fatal(e)
-	}
-	listener, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer listener.Close()
-	var authenticated atomic.Int32
-	serverConfig := &ssh.ServerConfig{PasswordCallback: func(c ssh.ConnMetadata, p []byte) (*ssh.Permissions, error) {
-		authenticated.Add(1)
-		if string(p) != "secret" {
-			return nil, fmt.Errorf("invalid password")
-		}
-		return nil, nil
-	}}
-	serverConfig.AddHostKey(signer)
-	go func() {
-		for {
-			connection, e := listener.Accept()
-			if e != nil {
-				return
-			}
-			go func(connection net.Conn) {
-				defer connection.Close()
-				_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
-				server, channels, requests, e := ssh.NewServerConn(connection, serverConfig)
-				if e != nil {
-					return
-				}
-				defer server.Close()
-				go ssh.DiscardRequests(requests)
-				for channel := range channels {
-					if channel.ChannelType() != "session" {
-						channel.Reject(ssh.UnknownChannelType, "unsupported")
-						continue
-					}
-					stream, requests, e := channel.Accept()
-					if e != nil {
-						return
-					}
-					for request := range requests {
-						if request.Type == "exec" {
-							request.Reply(true, nil)
-							_, _ = io.WriteString(stream, "aarch64\n")
-							_, _ = stream.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
-							stream.Close()
-							break
-						}
-						request.Reply(false, nil)
-					}
-				}
-			}(connection)
-		}
-	}()
-	host, port, _ := net.SplitHostPort(listener.Addr().String())
-	for _, test := range []struct {
-		name, key, reply string
-		wantAuth         bool
-	}{{"rejected", "", "reject", false}, {"changed", "SHA256:wrong", "", false}, {"approved", "", "approve", true}, {"pinned", ssh.FingerprintSHA256(signer.PublicKey()), "", true}} {
-		t.Run(test.name, func(t *testing.T) {
-			authenticated.Store(0)
-			s := validServer()
-			s["host"] = host
-			s["sshPort"] = port
-			s["hostKey"] = test.key
-			request, _ := json.Marshal(Request{Operation: "deploy", Server: s})
-			var output bytes.Buffer
-			e := Run(strings.NewReader(string(request)+"\n"+test.reply+"\n"), &output)
-			if e == nil {
-				t.Fatal("Unsupported VPS architecture accepted")
-			}
-			if (authenticated.Load() > 0) != test.wantAuth {
-				t.Fatalf("Password authentication before trust: %d", authenticated.Load())
-			}
-			if strings.Contains(output.String(), "secret") || strings.Contains(output.String(), "tunnel") {
-				t.Fatal("Secret leaked to output")
-			}
-			if test.wantAuth && !strings.Contains(output.String(), "x86_64") {
-				t.Fatalf("Unexpected result: %s", output.String())
-			}
-		})
-	}
-}
-
-func TestDeploymentLinksMatchTheOriginalApps(t *testing.T) {
-	qwdtt := deploymentLink(map[string]string{"kind": "qwdtt", "name": "My VPS", "host": "203.0.113.5", "peerPort": "56000", "password": "p@ss word", "deviceId": "device"})
-	if qwdtt != "qwdtt://config?name=My+VPS&peer=203.0.113.5%3A56000&hashes=&workers=18&port=9000&pass=p%40ss+word" {
-		t.Fatalf("qWDTT link %s", qwdtt)
-	}
-	csqtt := deploymentLink(map[string]string{"kind": "csqtt", "name": "My VPS", "host": "203.0.113.5", "peerPort": "46000", "password": "p@ss word", "deviceId": "device"})
-	if csqtt != "csqtt://connect?v=2&host=203.0.113.5&peer=46000&password=p%40ss%20word" {
-		t.Fatalf("CSQTT link %s", csqtt)
 	}
 }

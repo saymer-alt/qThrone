@@ -1,50 +1,22 @@
 package relay
 
 import (
-	"archive/zip"
 	"bytes"
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"math"
 	"net"
-	"net/http"
-	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 var addressPattern = regexp.MustCompile(`^[A-Za-z0-9.:_-]+$`)
 var userPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-var panelPattern = regexp.MustCompile(`^[A-Za-z0-9]+$`)
-var adminPinPattern = regexp.MustCompile(`WDTT_ADMIN_PIN\|(sha256/[A-Za-z0-9+/=]+)`)
-var dnsListPattern = regexp.MustCompile(`^[0-9a-fA-F:.,]{1,255}$`)
-
-func uploadFile(files *sftp.Client, path string, data []byte) error {
-	f, e := files.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
-	if e != nil {
-		return e
-	}
-	if e = f.Chmod(0600); e != nil {
-		f.Close()
-		return e
-	}
-	_, e = f.Write(data)
-	closeErr := f.Close()
-	if e != nil {
-		return e
-	}
-	return closeErr
-}
 
 func port(s map[string]string, key string) (string, error) {
 	n, e := strconv.Atoi(s[key])
@@ -52,257 +24,6 @@ func port(s map[string]string, key string) (string, error) {
 		return "", fmt.Errorf("Некорректный порт: %s", key)
 	}
 	return strconv.Itoa(n), nil
-}
-func validateServer(s map[string]string, install bool) error {
-	if s["kind"] == "freeturn" {
-		return validateFreeturn(s, install)
-	}
-	if s["kind"] == "mrtt" {
-		return validateMRTT(s, install)
-	}
-	if s["kind"] != "qwdtt" && s["kind"] != "csqtt" && s["kind"] != "wdttplus" {
-		return fmt.Errorf("Неизвестный протокол")
-	}
-	if !addressPattern.MatchString(s["host"]) || !userPattern.MatchString(s["user"]) {
-		return fmt.Errorf("Укажите IP/домен и логин SSH")
-	}
-	keys := []string{"sshPort", "peerPort"}
-	switch s["kind"] {
-	case "qwdtt":
-		keys = append(keys, "wgPort", "rawPort", "adminPort", "directPort")
-	case "wdttplus":
-		keys = append(keys, "wgPort", "localPort")
-	default:
-		keys = append(keys, "webPort")
-	}
-	for _, k := range keys {
-		if _, e := port(s, k); e != nil {
-			return e
-		}
-	}
-	if s["auth"] == "key" {
-		if s["key"] == "" {
-			return fmt.Errorf("Загрузите SSH-ключ")
-		}
-	} else if s["sshPassword"] == "" {
-		return fmt.Errorf("Введите пароль SSH")
-	}
-	if !install {
-		return nil
-	}
-	if s["password"] == "" || strings.Contains(s["password"], "|") {
-		return fmt.Errorf("Задайте пароль туннеля")
-	}
-	for _, k := range []string{"password", "webUser", "webPassword", "botToken", "adminToken", "adminId", "deviceId"} {
-		if strings.ContainsAny(s[k], "\r\n\x00") {
-			return fmt.Errorf("Некорректное значение: %s", k)
-		}
-	}
-	if s["kind"] == "wdttplus" {
-		// The main password of WDTT Plus's own deploy form.
-		if n := len([]rune(s["password"])); n < 8 || n > 256 {
-			return fmt.Errorf("Главный пароль: от 8 до 256 символов")
-		}
-		if s["dns"] != "" && !dnsListPattern.MatchString(s["dns"]) {
-			return fmt.Errorf("DNS: адреса через запятую")
-		}
-	} else if s["kind"] == "csqtt" {
-		if !panelPattern.MatchString(s["webUser"]) || !panelPattern.MatchString(s["webPassword"]) {
-			return fmt.Errorf("Логин и пароль панели: латиница и цифры")
-		}
-	} else {
-		for _, k := range []string{"dns1", "dns2"} {
-			if ip := net.ParseIP(s[k]); ip == nil || ip.To4() == nil {
-				return fmt.Errorf("DNS должен быть IPv4-адресом")
-			}
-		}
-		if s["adminToken"] == "" {
-			return fmt.Errorf("Не задан токен панели")
-		}
-	}
-	return nil
-}
-func artifact(ctx context.Context, kind string) (*zip.Reader, error) {
-	source, digest := "https://github.com/makriq-org/qwdtt/releases/download/v1.4.4/qWDTT_v1.4.4.apk", "ff5b2d1f265b0c4253cdf54ebf1f8a5d64afd1424086aa8b8be754b5c14df6a7"
-	if kind == "csqtt" {
-		source = "https://github.com/ttrroyy/MRTT/releases/download/v2.5.0-legacy/CSQTT-universal.apk"
-		digest = "bbc261eff2fce56b0ee774271416b0764b34ee16349e9e250ce3c8d45d660d0f"
-	} else if kind == "wdttplus" {
-		source = "https://github.com/Ivan4537/WDTT-Plus/releases/download/v20/WDTT-Plus-v20-arm64-v8a-release.apk"
-		digest = "918cc7ab477247ebdaca030c13c0d689ca1a9f59152217f8edf0484a943da0e3"
-	}
-	client := &http.Client{Timeout: 5 * time.Minute}
-	request, e := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
-	if e != nil {
-		return nil, e
-	}
-	response, e := client.Do(request)
-	if e != nil {
-		return nil, e
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("Загрузка установщика: HTTP %d", response.StatusCode)
-	}
-	data, e := io.ReadAll(io.LimitReader(response.Body, 250*1024*1024+1))
-	if e != nil {
-		return nil, e
-	}
-	sum := sha256.Sum256(data)
-	if len(data) > 250*1024*1024 || hex.EncodeToString(sum[:]) != digest {
-		return nil, fmt.Errorf("SHA-256 установщика не совпадает")
-	}
-	return zip.NewReader(bytes.NewReader(data), int64(len(data)))
-}
-func zipEntry(z *zip.Reader, name string) ([]byte, error) {
-	for _, f := range z.File {
-		if f.Name == name {
-			if f.UncompressedSize64 == 0 || f.UncompressedSize64 > 30_000_000 {
-				return nil, fmt.Errorf("Некорректный размер файла установщика")
-			}
-			r, e := f.Open()
-			if e != nil {
-				return nil, e
-			}
-			defer r.Close()
-			return io.ReadAll(io.LimitReader(r, 30_000_001))
-		}
-	}
-	return nil, fmt.Errorf("Нет файла установщика: %s", name)
-}
-func (p *protocol) deploy(r Request) error {
-	s := r.Server
-	install := r.Operation == "deploy"
-	if e := validateServer(s, install); e != nil {
-		return e
-	}
-	for _, k := range []string{"sshPassword", "key", "keyPassword", "sudoPassword", "password", "webPassword", "botToken", "adminToken"} {
-		p.secrets = append(p.secrets, s[k])
-	}
-	p.emit("progress", "Подключение к VPS", 5)
-	client, e := p.dial(s, true)
-	if e != nil {
-		return e
-	}
-	defer client.Close()
-	exec := func(command string) (string, error) { return p.run(client, s, command, 30*time.Minute, true) }
-	machine, e := exec("uname -m")
-	if e != nil {
-		return e
-	}
-	machine = strings.TrimSpace(machine)
-	if s["kind"] == "wdttplus" {
-		return p.deployWdttPlus(client, s, install, machine, exec)
-	}
-	if s["kind"] == "freeturn" {
-		return p.deployFreeturn(client, s, install)
-	}
-	if s["kind"] == "mrtt" {
-		return p.deployMRTT(client, s, install, machine)
-	}
-	binary := "assets/server"
-	if s["kind"] == "qwdtt" && machine != "x86_64" && install {
-		return fmt.Errorf("Официальный сервер qWDTT поддерживает x86_64")
-	}
-	if s["kind"] == "csqtt" {
-		switch machine {
-		case "x86_64", "amd64":
-			binary = "assets/csqtt-linux-amd64"
-		case "aarch64", "arm64":
-			binary = "assets/csqtt-linux-arm64"
-		case "armv7l", "armv7":
-			binary = "assets/csqtt-linux-armv7"
-		default:
-			return fmt.Errorf("Архитектура VPS не поддерживается: %s", machine)
-		}
-	}
-	p.emit("progress", "Загрузка официального установщика", 10)
-	apk, e := artifact(p.ctx, s["kind"])
-	if e != nil {
-		return e
-	}
-	files, e := sftp.NewClient(client)
-	if e != nil {
-		return e
-	}
-	defer files.Close()
-	upload := func(path string, data []byte) error {
-		return uploadFile(files, path, data)
-	}
-	script, e := zipEntry(apk, "assets/deploy.sh")
-	if e != nil {
-		return e
-	}
-	if e = upload("/tmp/deploy.sh", script); e != nil {
-		return e
-	}
-	if install {
-		p.emit("progress", "Передача файлов на VPS", 30)
-		data, e := zipEntry(apk, binary)
-		if e != nil {
-			return e
-		}
-		target := "/tmp/.csqtt-upload-server"
-		if s["kind"] == "qwdtt" {
-			target = "/tmp/wdtt-server"
-			if bytes.Contains(data, []byte("/etc/wireguard")) || (bytes.Contains(data, []byte("wg0")) && !bytes.Contains(data, []byte("wdtt0"))) {
-				return fmt.Errorf("Устаревший сервер qWDTT: требуется wdtt0 и /etc/wdtt")
-			}
-		}
-		if e = upload(target, data); e != nil {
-			return e
-		}
-		uploads := map[string][]byte{}
-		if s["kind"] == "qwdtt" {
-			uploads["/tmp/wdtt-main.password"] = []byte(s["password"])
-			uploads["/tmp/wdtt-admin.token"] = []byte(s["adminToken"])
-			uploads["/tmp/wdtt-bot.token"] = []byte(s["botToken"])
-		} else {
-			uploads["/tmp/.csqtt-upload-web.env"] = []byte("CSQTT_WEB_USER=" + s["webUser"] + "\nCSQTT_WEB_PASS=" + s["webPassword"] + "\n")
-			uploads["/tmp/.csqtt-upload-overrides.json"], _ = json.Marshal(map[string]string{"main_password": s["password"], "device_id": s["deviceId"]})
-		}
-		for path, data := range uploads {
-			if e = upload(path, data); e != nil {
-				return e
-			}
-		}
-	}
-	env := "CSQTT_PEER_PORT=" + s["peerPort"] + " CSQTT_WEB_PORT=" + s["webPort"] + " CSQTT_SSH_PORT=" + s["sshPort"] + " CSQTT_DEPLOY_MODE=systemd"
-	if s["docker"] == "true" {
-		env = strings.Replace(env, "=systemd", "=docker", 1)
-	}
-	if s["kind"] == "qwdtt" {
-		env = "WDTT_DTLS_PORT=" + s["peerPort"] + " WDTT_WG_PORT=" + s["wgPort"] + " WDTT_RAW_PORT=" + s["rawPort"] + " WDTT_DIRECT_PORT=" + s["directPort"] + " WDTT_ADMIN_PORT=" + s["adminPort"] + " WDTT_SSH_PORT=" + s["sshPort"] + " WDTT_ADMIN_ID=" + quote(s["adminId"]) + " WDTT_DNS_SERVERS=" + quote(s["dns1"]+","+s["dns2"])
-	}
-	action := "install"
-	if !install {
-		action = "uninstall"
-	}
-	root := asRoot("env " + env + " bash /tmp/deploy.sh " + action)
-	p.emit("progress", "Выполнение установщика", 45)
-	output, e := exec(root)
-	if e != nil {
-		return fmt.Errorf("Установщик завершился с ошибкой: %w", e)
-	}
-	if install {
-		marker := "CSQTT_DEPLOY_OK"
-		if s["kind"] == "qwdtt" {
-			marker = "WDTT_DEPLOY_OK"
-			pin := adminPinPattern.FindStringSubmatch(output)
-			if len(pin) != 2 {
-				return fmt.Errorf("Не получен TLS-отпечаток панели")
-			}
-			p.emit("admin-pin", pin[1], nil)
-		}
-		if !strings.Contains(output, marker) {
-			return fmt.Errorf("Установщик не подтвердил запуск сервиса")
-		}
-		p.emit("config", "", deploymentLink(s))
-	} else {
-		p.emit("config", "", "")
-	}
-	p.emit("progress", "Готово", 100)
-	return nil
 }
 
 // sshAuth reads the server's SSH login: a key (with its passphrase) or a password.
@@ -490,6 +211,10 @@ func (w *deployWriter) Write(b []byte) (int, error) {
 		}
 		line := w.pending[:at+1]
 		w.p.emit("log", line, nil)
+		// The panel installer names its phases with "==> ".
+		if step, ok := strings.CutPrefix(strings.TrimSpace(line), "==> "); ok {
+			w.p.emit("progress", step, nil)
+		}
 		parts := strings.SplitN(strings.TrimSpace(line), "|", 3)
 		prefix := "WDTT_PROGRESS"
 		if w.kind == "csqtt" {
@@ -517,35 +242,8 @@ func (w *deployWriter) flush() {
 	}
 }
 
-// deploymentLink is the link the original apps give for a deployed server. qWDTT:
-// the admin tab's qwdtt://config (name, peer, hashes, workers=18, port=9000, pass;
-// no tunnel mode, so the client's default WG applies). CSQTT: the web panel's
-// csqtt://connect?v=2. Neither names a device: the server is bound to this
-// computer's device ID, the one new profiles take.
-func deploymentLink(s map[string]string) string {
-	if s["kind"] == "qwdtt" {
-		name := s["name"]
-		if name == "" {
-			name = s["password"]
-		}
-		// URLEncoder.encode of the original app.
-		return "qwdtt://config?name=" + url.QueryEscape(name) +
-			"&peer=" + url.QueryEscape(net.JoinHostPort(s["host"], s["peerPort"])) +
-			"&hashes=&workers=18&port=9000&pass=" + url.QueryEscape(s["password"])
-	}
-	return "csqtt://connect?v=2&host=" + encodeURIComponent(s["host"]) +
-		"&peer=" + encodeURIComponent(s["peerPort"]) + "&password=" + encodeURIComponent(s["password"])
-}
-
-// encodeURIComponent of the CSQTT web panel.
-func encodeURIComponent(value string) string {
-	var b strings.Builder
-	for _, c := range []byte(value) {
-		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || strings.IndexByte("-_.!~*'()", c) >= 0 {
-			b.WriteByte(c)
-		} else {
-			fmt.Fprintf(&b, "%%%02X", c)
-		}
-	}
-	return b.String()
+// asRootStdin runs a command that reads stdin as root; for a non-root login sudo takes the
+// first stdin line as its password.
+func asRootStdin(command string) string {
+	return "if [ \"$(id -u)\" = 0 ]; then " + command + "; else sudo -S -p '' " + command + "; fi"
 }
