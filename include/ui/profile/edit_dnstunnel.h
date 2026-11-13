@@ -3,6 +3,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMap>
 #include <QPlainTextEdit>
 #include <QSpinBox>
 #include <QWidget>
@@ -26,6 +27,8 @@ private:
     QCheckBox *dnsttCompat, *authoritative, *soarDiscovery;
     QSpinBox *clientIdSize, *keepAliveInterval;
     QLabel *note;
+    // MasterDnsVPN client keys with a field of their own; an empty field keeps the engine default.
+    QMap<QString, QWidget *> masterFields;
     void setRowVisible(QWidget *field, bool visible);
     void updateFields();
 };

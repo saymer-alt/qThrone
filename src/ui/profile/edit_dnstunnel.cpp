@@ -1,6 +1,8 @@
 #include "include/ui/profile/edit_dnstunnel.h"
 #include "include/configs/outbounds/dnstunnel.h"
 #include <QFormLayout>
+#include <QIntValidator>
+#include <tuple>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -56,7 +58,37 @@ EditDnsTunnel::EditDnsTunnel(QWidget *parent) : QWidget(parent) {
     form->addRow(QStringLiteral("Шифрование"), encryption);
     form->addRow(QStringLiteral("Пресет CottenDNS"), cottenPreset);
     form->addRow(QStringLiteral("DNS-резолверы"), resolvers);
-    form->addRow(QStringLiteral("Дополнительные параметры MasterDNS (JSON)"), masterOptions);
+    using Choices = QList<QPair<QString, QString>>;
+    const Choices compression{{QStringLiteral("По умолчанию"), ""}, {QStringLiteral("Нет"), "0"}, {"ZSTD", "1"}, {"LZ4", "2"}, {"ZLIB", "3"}};
+    const QList<std::tuple<QString, QString, Choices>> masterKeys{
+        {"RESOLVER_BALANCING_STRATEGY", QStringLiteral("Выбор резолверов"),
+         {{QStringLiteral("По умолчанию"), ""}, {QStringLiteral("Случайно"), "1"}, {QStringLiteral("По кругу"), "2"}, {QStringLiteral("Меньше потерь"), "3"},
+          {QStringLiteral("Меньше задержка"), "4"}, {QStringLiteral("Гибридная оценка"), "5"}, {QStringLiteral("Потери, затем задержка"), "6"},
+          {QStringLiteral("Лучшие по потерям, случайно"), "7"}, {QStringLiteral("Лучшие по потерям, по кругу"), "8"}}},
+        {"PACKET_DUPLICATION_COUNT", QStringLiteral("Дублирование пакетов (1–10)"), {}},
+        {"SETUP_PACKET_DUPLICATION_COUNT", QStringLiteral("Дублирование пакетов установки потока"), {}},
+        {"UPLOAD_COMPRESSION_TYPE", QStringLiteral("Сжатие отправки"), compression},
+        {"DOWNLOAD_COMPRESSION_TYPE", QStringLiteral("Сжатие приёма"), compression},
+        {"BASE_ENCODE_DATA", QStringLiteral("Base-кодирование данных"),
+         {{QStringLiteral("По умолчанию"), ""}, {QStringLiteral("Включено"), "true"}, {QStringLiteral("Выключено"), "false"}}},
+        {"MIN_UPLOAD_MTU", QStringLiteral("MTU отправки: минимум"), {}}, {"MAX_UPLOAD_MTU", QStringLiteral("MTU отправки: максимум"), {}},
+        {"MIN_DOWNLOAD_MTU", QStringLiteral("MTU приёма: минимум"), {}}, {"MAX_DOWNLOAD_MTU", QStringLiteral("MTU приёма: максимум"), {}}};
+    for (const auto &[key, label, choices] : masterKeys) {
+        QWidget *field;
+        if (choices.isEmpty()) {
+            auto *edit = new QLineEdit(this);
+            edit->setValidator(new QIntValidator(0, 65535, edit));
+            edit->setPlaceholderText(QStringLiteral("по умолчанию"));
+            field = edit;
+        } else {
+            auto *combo = new QComboBox(this);
+            for (const auto &[text, value] : choices) combo->addItem(text, value);
+            field = combo;
+        }
+        masterFields[key] = field;
+        form->addRow(label, field);
+    }
+    form->addRow(QStringLiteral("Другие параметры MasterDNS (JSON)"), masterOptions);
     form->addRow(QStringLiteral("Тип DNS-записи"), recordType);
     form->addRow(QString(), dnsttCompat);
     form->addRow(QStringLiteral("Размер ClientID, байт"), clientIdSize);
@@ -87,7 +119,8 @@ void EditDnsTunnel::updateFields() {
     // MasterDNS and CottenDNS take a key and method; Soar a public key; none of the three a server-side service.
     const bool keyed = kind == "masterdns" || kind == "cottendns", master = keyed || soar;
     setRowVisible(masterOptions, kind == "masterdns");
-    masterOptions->setToolTip(QStringLiteral("Балансировка резолверов, MTU, дублирование и тайм-ауты. Пусто: настройки движка."));
+    for (auto *field : masterFields) setRowVisible(field, kind == "masterdns");
+    masterOptions->setToolTip(QStringLiteral("Остальные ключи клиента MasterDnsVPN, например тайм-ауты. Пусто: настройки движка."));
     setRowVisible(pubkey, dnstt || vaydns || soar);
     pubkey->setPlaceholderText(soar ? QStringLiteral("Ed25519 в base64, 44 символа") : QStringLiteral("64 шестнадцатеричных символа"));
     for (QWidget *field : std::initializer_list<QWidget *>{soarDiscovery, soarCountry, soarTransport}) setRowVisible(field, soar);
@@ -124,7 +157,19 @@ void EditDnsTunnel::onStart(std::shared_ptr<Configs::Profile> profile) {
     QStringList list;
     for (const auto &value : d["resolvers"].toArray()) list << value.toString();
     resolvers->setPlainText(list.join('\n'));
-    masterOptions->setPlainText(d["options"].toObject().isEmpty() ? QString() : QString::fromUtf8(QJsonDocument(d["options"].toObject()).toJson()));
+    // The carrier upper-cases every key, so a key of any case is the same setting.
+    auto options = d["options"].toObject();
+    for (auto it = masterFields.begin(); it != masterFields.end(); ++it) {
+        QString text;
+        for (const auto &name : options.keys())
+            if (name.toUpper() == it.key()) {
+                const auto value = options.take(name);
+                text = value.isBool() ? (value.toBool() ? "true" : "false") : value.isDouble() ? QString::number(value.toInteger()) : value.toString();
+            }
+        if (auto *edit = qobject_cast<QLineEdit *>(it.value())) edit->setText(text);
+        else if (auto *combo = qobject_cast<QComboBox *>(it.value())) combo->setCurrentIndex(qMax(0, combo->findData(text)));
+    }
+    masterOptions->setPlainText(options.isEmpty() ? QString() : QString::fromUtf8(QJsonDocument(options).toJson()));
     recordType->setCurrentIndex(qMax(0, recordType->findData(d["record_type"].toString("txt"))));
     dnsttCompat->setChecked(d["dnstt_compat"].toBool());
     clientIdSize->setValue(d["clientid_size"].toInt(2));
@@ -162,6 +207,18 @@ bool EditDnsTunnel::onEnd() {
             }
             d["options"] = options.object();
         }
+        auto options = d["options"].toObject();
+        for (auto it = masterFields.begin(); it != masterFields.end(); ++it) {
+            for (const auto &name : options.keys())
+                if (name.toUpper() == it.key()) options.remove(name);
+            auto *edit = qobject_cast<QLineEdit *>(it.value());
+            const auto text = edit ? edit->text().trimmed() : qobject_cast<QComboBox *>(it.value())->currentData().toString();
+            if (text.isEmpty()) continue;
+            if (text == "true" || text == "false") options[it.key()] = text == "true";
+            else options[it.key()] = text.toInt();
+        }
+        if (options.isEmpty()) d.remove("options");
+        else d["options"] = options;
     }
     for (const auto *key : {"domain", "pubkey", "cert", "mkey", "encryption", "resolvers", "record_type", "dnstt_compat",
                             "clientid_size", "idle_timeout", "keepalive", "authoritative", "congestion_control", "keep_alive_interval", "backend"})
