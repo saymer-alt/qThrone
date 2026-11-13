@@ -461,6 +461,47 @@ int TestQwdttImport() {
         const auto built = Configs::BuildSingBoxConfig(socks);
         check(built->error.isEmpty() && built->coreConfig.value("route").toObject().value("final").toString() == "direct", "subscription route applies only to its group");
         check(Configs::dataManager->settingsRepo->current_route_id == globalRoute && Configs::dataManager->settingsRepo->remote_dns == globalDNS, "provider routing does not mutate global routing or DNS");
+        {
+            // A client rule to proxy beats the full Xray config's own "ru -> direct"; everything else keeps the provider's routing.
+            const auto full = parse(R"({"remarks":"RU split","outbounds":[{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"example.net","port":443,"users":[{"id":"00000000-0000-0000-0000-000000000001"}]}]}},{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}],"routing":{"rules":[{"type":"field","ip":["10.0.0.0/8"],"outboundTag":"direct"},{"type":"field","domain":["ads.example"],"outboundTag":"block"}]}})");
+            check(full.size() == 1 && full.first()->Custom() && full.first()->Custom()->IsXrayFullConfig(), "explicit routing fixture parses");
+            auto explicitGroup = Configs::GroupsRepo::NewGroup(); explicitGroup->name = "Explicit rules";
+            check(Configs::dataManager->groupsRepo->AddGroup(explicitGroup), "explicit routing group saved");
+            if (full.size() == 1 && Configs::dataManager->profilesRepo->AddProfile(full.first(), explicitGroup->id)) {
+                auto route = std::make_shared<Configs::RouteProfile>();
+                route->name = "Explicit app";
+                auto app = std::make_shared<Configs::RouteRule>();
+                app->outboundID = Configs::proxyID;
+                app->process_name = {"forum.exe"};
+                route->Rules = {app};
+                check(Configs::dataManager->routesRepo->AddRouteProfile(route), "explicit routing profile saved");
+                auto *settings = Configs::dataManager->settingsRepo.get();
+                const auto oldRoute = settings->current_route_id;
+                settings->current_route_id = route->id;
+                const auto restoreRoute = qScopeGuard([settings, oldRoute] { settings->current_route_id = oldRoute; });
+                const auto built = Configs::BuildSingBoxConfig(full.first());
+                check(built->error.isEmpty(), "full Xray config with an app rule builds");
+                bool ruleTaken = false, explicitOutbound = false;
+                for (const auto &rule : built->coreConfig["route"].toObject()["rules"].toArray())
+                    if (rule.toObject()["outbound"].toString() == "proxy-rules" && rule.toObject().contains("process_name")) ruleTaken = true;
+                for (const auto &outbound : built->coreConfig["outbounds"].toArray())
+                    if (outbound.toObject()["tag"].toString() == "proxy-rules") explicitOutbound = true;
+                check(ruleTaken && explicitOutbound, "app rule to proxy takes the explicit bridge");
+                check(built->coreConfig["route"].toObject()["final"].toString() == "proxy", "everything else keeps the provider bridge");
+                const auto xrayRules = built->xrayConfig["routing"].toObject()["rules"].toArray();
+                bool hasInbound = false;
+                for (const auto &inbound : built->xrayConfig["inbounds"].toArray()) if (inbound.toObject()["tag"].toString() == "rawline-bridge-rules") hasInbound = true;
+                check(hasInbound && !xrayRules.isEmpty() && xrayRules.first().toObject()["outboundTag"].toString() == "block"
+                      && xrayRules.first().toObject()["inboundTag"].toArray().first().toString() == "rawline-bridge-rules",
+                      "explicit inbound keeps blocks and drops direct exits");
+                int directForExplicit = 0;
+                for (const auto &rule : xrayRules) {
+                    const auto object = rule.toObject();
+                    if (object["outboundTag"].toString() == "direct" && object["inboundTag"].toArray().contains(QString("rawline-bridge-rules"))) ++directForExplicit;
+                }
+                check(directForExplicit == 0 && xrayRules.size() == 4, "provider rules follow untouched");
+            }
+        }
         const auto sourceURL = QStringLiteral("https://example.invalid/geo-fixture/") + fixture.path();
         const auto cache = Configs::GetBasePath() + "/provider-geodata/" + QString::fromLatin1(QCryptographicHash::hash(sourceURL.toUtf8(), QCryptographicHash::Sha256).toHex()) + ".dat";
         QDir().mkpath(QFileInfo(cache).absolutePath());

@@ -3,6 +3,7 @@
 #include <QAbstractTableModel>
 #include <QList>
 #include <QHash>
+#include <QSet>
 #include <QColor>
 #include <memory>
 
@@ -16,7 +17,7 @@ class ProfilesTableModel : public QAbstractTableModel {
     Q_OBJECT
 public:
     // GeoCountryRole: the stored ISO code of the egress country from the last IP or speed test.
-    enum { ProfileIdRole = Qt::UserRole, TestStateRole, TestCountryRole, TestSinceRole, GeoCountryRole };
+    enum { ProfileIdRole = Qt::UserRole, TestStateRole, TestCountryRole, TestSinceRole, GeoCountryRole, PinnedRole };
     void setTestState(const QList<int> &ids, int state, const QString &country = {}, const QString &text = {});
     // A repeated latency test starts the rows' spinners over.
     void restartTestAnimation(const QList<int> &ids);
@@ -90,6 +91,9 @@ private:
     void ensureCached(int profileId) const;
     void evictOne() const;
     void setProfileIds(const QList<int> &ids);
+public:
+    QSet<int> pinned;
+private:
     void ensureFilterIndex() const;
 
     QList<int> m_profileIds;

@@ -77,6 +77,9 @@ namespace Configs {
             constexpr auto mixedIn = "mixed-in";
             constexpr auto tunIn = "tun-in";
             constexpr auto xrayFullConfigIn = "rawline-bridge";
+            // The full Xray config's inbound for traffic a client rule sends to proxy, and the outbound that reaches it.
+            constexpr auto xrayExplicitIn = "rawline-bridge-rules";
+            constexpr auto proxyExplicit = "proxy-rules";
 
             constexpr auto adblockRuleSet = "rawline-adblocksingbox";
             constexpr auto privateRangesRuleSet = "rawline-private-ranges";
@@ -222,6 +225,8 @@ namespace Configs {
         struct BuildContext {
             std::shared_ptr<RouteProfile> route;
             QJsonObject providerRouting;
+            // proxyExplicit when the main server is a full Xray config whose routing would send proxied traffic out directly.
+            QString explicitProxyTag;
             bool forTest = false;
             bool tunEnabled = false;
             bool l3Bridge = false;
@@ -487,6 +492,79 @@ namespace Configs {
                     {"password", bridge.auth},
                 }}},
             };
+        }
+
+        // A full Xray config keeps its own routing, which may send what the client routed to proxy straight out again
+        // (a provider's "ru -> direct"). Traffic a client rule sends to proxy on purpose enters through its own inbound,
+        // whose rules are the provider's without the direct exits: balancers, server choice and blocks stay.
+        namespace XrayExplicitRouting {
+            QList<QJsonObject> rules(const QJsonObject &config) {
+                QList<QJsonObject> out;
+                for (const auto &rule : config["routing"].toObject()["rules"].toArray()) if (rule.isObject()) out << rule.toObject();
+                return out;
+            }
+            QList<QJsonObject> outbounds(const QJsonObject &config) {
+                QList<QJsonObject> out;
+                for (const auto &outbound : config["outbounds"].toArray()) if (outbound.isObject()) out << outbound.toObject();
+                return out;
+            }
+            QSet<QString> directTags(const QJsonObject &config) {
+                QSet<QString> out;
+                for (const auto &outbound : outbounds(config)) if (outbound["protocol"].toString() == "freedom") out << outbound["tag"].toString();
+                return out;
+            }
+            bool isProxyProtocol(const QString &protocol) {
+                return protocol != "freedom" && protocol != "blackhole" && protocol != "dns" && protocol != "loopback";
+            }
+            // A rule without inbounds, or one naming the bridge, applies to what the client sends in.
+            bool seesBridge(const QJsonObject &rule) {
+                return !rule.contains("inboundTag") || rule["inboundTag"].toArray().contains(QString(tags::xrayFullConfigIn));
+            }
+            bool needed(const QJsonObject &config) {
+                const auto direct = directTags(config);
+                if (direct.isEmpty()) return false;
+                for (const auto &rule : rules(config)) if (direct.contains(rule["outboundTag"].toString()) && seesBridge(rule)) return true;
+                return false;
+            }
+            bool apply(QJsonObject &config, const QString &inboundTag) {
+                const auto direct = directTags(config);
+                const auto original = rules(config);
+                // The catch-all rule's balancer or proxy, else the first proxy outbound.
+                QString key, target;
+                const QSet<QString> catchAllKeys{"type", "outboundTag", "balancerTag", "ruleTag", "network"};
+                for (auto it = original.crbegin(); it != original.crend(); ++it) {
+                    bool catchAll = true;
+                    for (const auto &k : it->keys()) if (!catchAllKeys.contains(k)) catchAll = false;
+                    if (!catchAll) continue;
+                    if (!(*it)["balancerTag"].toString().isEmpty()) { key = "balancerTag"; target = (*it)["balancerTag"].toString(); }
+                    else if (const auto tag = (*it)["outboundTag"].toString(); !tag.isEmpty() && !direct.contains(tag)) {
+                        for (const auto &outbound : outbounds(config))
+                            if (outbound["tag"].toString() == tag && isProxyProtocol(outbound["protocol"].toString())) { key = "outboundTag"; target = tag; }
+                    }
+                    break;
+                }
+                if (target.isEmpty()) {
+                    for (const auto &outbound : outbounds(config)) {
+                        if (isProxyProtocol(outbound["protocol"].toString()) && !outbound["tag"].toString().isEmpty()) {
+                            key = "outboundTag"; target = outbound["tag"].toString(); break;
+                        }
+                    }
+                }
+                if (target.isEmpty()) return false;
+                QJsonArray out;
+                for (auto rule : original) {
+                    if (!seesBridge(rule) || direct.contains(rule["outboundTag"].toString())) continue;
+                    rule.remove("ruleTag");
+                    rule["inboundTag"] = QJsonArray{inboundTag};
+                    out.append(rule);
+                }
+                out.append(QJsonObject{{"type", "field"}, {"inboundTag", QJsonArray{inboundTag}}, {key, target}});
+                for (const auto &rule : original) out.append(rule);
+                auto routing = config["routing"].toObject();
+                routing["rules"] = out;
+                config["routing"] = routing;
+                return true;
+            }
         }
 
         QJsonObject xraySocksInbound(const QString &tag, const coreBridgeConfig &bridge) {
@@ -2176,6 +2254,25 @@ namespace Configs {
                     userXrayConfig["routing"] = routing;
                 }
 
+                // Only the main server alone: behind WARP or other hops the config sees their servers, not the sites.
+                if (req.includeProxy && !req.warpWrap && ents.size() == 1 && req.tailDetour.isEmpty() && !ctx.forTest
+                    && XrayExplicitRouting::needed(userXrayConfig)) {
+                    const int explicitPort = MkManyPorts(1, custom->bridgeHost)[0];
+                    if (explicitPort > 0 && XrayExplicitRouting::apply(userXrayConfig, tags::xrayExplicitIn)) {
+                        const coreBridgeConfig explicitBridge{true, explicitPort, GetRandomString(32), custom->bridgeHost};
+                        auto explicitInbound = xraySocksInbound(tags::xrayExplicitIn, explicitBridge);
+                        explicitInbound["sniffing"] = bridgeInbound["sniffing"];
+                        auto withExplicit = userXrayConfig["inbounds"].toArray();
+                        withExplicit.append(explicitInbound);
+                        userXrayConfig["inbounds"] = withExplicit;
+                        ctx.outbounds.append(QJsonObject{
+                            {"type", "socks"}, {"tag", tags::proxyExplicit}, {"server", explicitBridge.host},
+                            {"server_port", explicitBridge.port}, {"username", explicitBridge.auth}, {"password", explicitBridge.auth},
+                        });
+                        ctx.explicitProxyTag = tags::proxyExplicit;
+                    }
+                }
+
                 ctx.result->xrayConfig = userXrayConfig;
                 ctx.result->isXrayNeeded = true;
             }
@@ -2940,6 +3037,15 @@ namespace Configs {
                 for (const int index : sourceIndexes) {
                     if (index < 0) profileOrigins.append({RouteRuleOriginKind::AdBlock, -1, {}});
                     else profileOrigins.append({RouteRuleOriginKind::ProfileRule, index, routeChain->Rules.at(index)->name});
+                }
+            }
+            // A rule that names proxy beats the full Xray config's own direct exits (XrayExplicitRouting).
+            if (!ctx.explicitProxyTag.isEmpty() && !routeChain->isRaw) {
+                for (qsizetype i = 0; i < profileRules.size(); ++i) {
+                    auto rule = profileRules[i].toObject();
+                    if (rule["outbound"].toString() != tags::proxy) continue;
+                    rule["outbound"] = ctx.explicitProxyTag;
+                    profileRules[i] = rule;
                 }
             }
             if (ctx.l3Bridge) profileRules = withL3BridgeTwins(profileRules, profileOrigins);

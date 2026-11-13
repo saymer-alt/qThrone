@@ -383,6 +383,8 @@ namespace Configs {
         // A smaller connect button ("compact") and the arranging tutorial seen ("seen").
         QString new_layout_size = "normal";
         QString new_layout_tutorial;
+        // Comma-separated ids of the profiles shown first in their group.
+        QString pinned_profiles;
         QString relay_default_qwdtt_mode = "wg";
         QString relay_default_wdttplus_mode = "wg";
         QString relay_default_csqtt_transport = "udp";

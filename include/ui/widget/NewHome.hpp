@@ -10,6 +10,9 @@
 #include <QStyledItemDelegate>
 #include <QWidget>
 #include <functional>
+#include <memory>
+
+namespace Configs { class Group; }
 
 class MainWindow;
 class QBoxLayout;
@@ -221,6 +224,8 @@ private:
     void showGroupMenu();
     void checkCurrentConnection();
     void refreshGroupHeader();
+    QString routeText(const std::shared_ptr<Configs::Group> &group, bool *fromProvider);
+    void openRouting();
     void updateNotice();
     // Puts the panel, the subscription card and the connect block where the settings say.
     void applyArrangement();
@@ -261,6 +266,9 @@ private:
     QWidget *m_traffic = nullptr;
     QLabel *m_expiry = nullptr;
     QLabel *m_announce = nullptr;
+    // Which routing the subscription runs with; a click opens where it is changed.
+    QLabel *m_routeLine = nullptr;
+    bool m_routeFromProvider = false;
     QLineEdit *m_search = nullptr;
     QWidget *m_notice = nullptr;
     QVBoxLayout *m_noticeLayout = nullptr;

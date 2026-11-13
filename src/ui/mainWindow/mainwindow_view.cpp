@@ -561,7 +561,11 @@ void MainWindow::refresh_proxy_list_impl_refresh_data(const QList<int>& ids, boo
     if (!ids.isEmpty()) {
         for (auto id:ids) profilesTableModel->refreshProfileId(id);
     } else {
-        profilesTableModel->refreshTable(currentGroup->profiles, mayNeedReset);
+        auto order = currentGroup->profiles;
+        profilesTableModel->pinned.clear();
+        for (const auto &id : Configs::dataManager->settingsRepo->pinned_profiles.split(',', Qt::SkipEmptyParts)) profilesTableModel->pinned.insert(id.toInt());
+        std::stable_partition(order.begin(), order.end(), [this](int id) { return profilesTableModel->pinned.contains(id); });
+        profilesTableModel->refreshTable(order, mayNeedReset);
     }
 }
 

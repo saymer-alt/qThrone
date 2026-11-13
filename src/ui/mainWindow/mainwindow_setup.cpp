@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <QAbstractTextDocumentLayout>
 #include <QTextDocument>
 #include <QtMath>
@@ -751,7 +752,26 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     });
     connect(ui->menu_qr, &QAction::triggered, this, [=,this]() { display_qr_link(false); });
 
+    // Pinned servers lead their group in both themes; the ids live in the settings.
+    auto *pinAction = new QAction(this);
+    ui->menu_server->insertAction(ui->menu_server->actions().value(0), pinAction);
+    connect(pinAction, &QAction::triggered, this, [=,this] {
+        const auto selected = get_now_selected_list();
+        auto ids = Configs::dataManager->settingsRepo->pinned_profiles.split(',', Qt::SkipEmptyParts);
+        const bool pin = !std::all_of(selected.begin(), selected.end(), [&](int id) { return ids.contains(QString::number(id)); });
+        for (const int id : selected) {
+            ids.removeAll(QString::number(id));
+            if (pin) ids.append(QString::number(id));
+        }
+        Configs::dataManager->settingsRepo->pinned_profiles = ids.join(',');
+        Configs::dataManager->settingsRepo->Save();
+        refresh_proxy_list({}, true);
+    });
     connect(ui->menu_server, &QMenu::aboutToShow, this, [=,this](){
+        const auto pinSelected = get_now_selected_list();
+        const auto pinnedIds = Configs::dataManager->settingsRepo->pinned_profiles.split(',', Qt::SkipEmptyParts);
+        pinAction->setEnabled(!pinSelected.empty());
+        pinAction->setText(!pinSelected.empty() && std::all_of(pinSelected.begin(), pinSelected.end(), [&](int id) { return pinnedIds.contains(QString::number(id)); }) ? tr("Unpin") : tr("Pin"));
         if (auto selected = get_now_selected_list(); selected.empty())
         {
             ui->actionSpeedtest_Selected->setEnabled(false);

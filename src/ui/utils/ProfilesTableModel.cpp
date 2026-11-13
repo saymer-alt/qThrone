@@ -4,6 +4,7 @@
 #include "include/configs/common/Outbound.h"
 #include "include/ui/setting/ThemeManager.hpp"
 #include "include/ui/utils/ServiceCheckHtml.h"
+#include "include/ui/widget/NewHome.hpp"
 #include <QApplication>
 #include <QDateTime>
 #include <QJsonArray>
@@ -109,6 +110,18 @@ QVariant ProfilesTableModel::data(const QModelIndex &index, int role) const {
     const int profileId = m_profileIds[index.row()];
     if (role == ProfileIdRole) {
         return profileId;
+    }
+    if (role == PinnedRole) return pinned.contains(profileId);
+    // The classic table marks a pinned server beside its name; the new theme paints its own mark.
+    if (role == Qt::DecorationRole && index.column() == ColName && pinned.contains(profileId)) {
+        static QIcon pinIcon;
+        static QColor pinColor;
+        // Redrawn when the theme changes the text colour.
+        if (const QColor text = QApplication::palette().color(QPalette::Text); pinIcon.isNull() || text != pinColor) {
+            pinColor = text;
+            pinIcon = NewStyle::icon(QStringLiteral("pin"), text);
+        }
+        return pinIcon;
     }
     ensureCached(profileId);
     auto it = m_cache.constFind(profileId);

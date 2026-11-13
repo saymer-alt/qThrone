@@ -9512,6 +9512,14 @@ Improves hole-punching reliability. Requires IPv4.</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Pin</source>
+        <translation>Закрепить</translation>
+    </message>
+    <message>
+        <source>Unpin</source>
+        <translation>Открепить</translation>
+    </message>
+    <message>
         <source>[Auto selector] The subscription replaced profiles it was running on — rebuilding.</source>
         <translation>[Автовыбор] Подписка заменила используемые профили — пересборка.</translation>
     </message>
@@ -16796,6 +16804,22 @@ Remove that endpoint from this routing profile as well?</source>
 </context>
 <context>
     <name>NewHome</name>
+    <message>
+        <source>Provider turned routing off: all through the server</source>
+        <translation>Провайдер выключил маршрутизацию: всё через сервер</translation>
+    </message>
+    <message>
+        <source>Provider routing: %1</source>
+        <translation>Маршрутизация провайдера: %1</translation>
+    </message>
+    <message>
+        <source>Own routing: %1</source>
+        <translation>Своя маршрутизация: %1</translation>
+    </message>
+    <message>
+        <source>Routing: %1</source>
+        <translation>Маршрутизация: %1</translation>
+    </message>
     <message>
         <source>Arrange the window</source>
         <translation>Изменить расположение</translation>

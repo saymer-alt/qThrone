@@ -51,6 +51,10 @@ inline const NewIconPath newIcon_qr[] = {
     {"M8,2 L6,2 C3.8,2 2,3.8 2,6 L2,8 M16,2 L18,2 C20.2,2 22,3.8 22,6 L22,8 M22,16 L22,18 C22,20.2 20.2,22 18,22 L16,22 M8,22 L6,22 C3.8,22 2,20.2 2,18 L2,16", 2.0f},
     {"M6,6 L10,6 L10,10 L6,10 Z M14,6 L18,6 L18,10 L14,10 Z M6,14 L10,14 L10,18 L6,18 Z M14,14 L16,14 L16,16 L14,16 Z M18,14 L20,14 L20,18 L18,18 Z M14,18 L16,18 L16,20 L14,20 Z", 0.0f},
 };
+// The mobile app's ic_mobile_pin.
+inline const NewIconPath newIcon_pin[] = {
+    {"M8,13 L15,6 C18,3 22,7 19,10 L10,19 C5,24 0,18 4,14 L14,4 C18,0 25,6 21,10 L11,20", 2.2f},
+};
 inline const NewIconPath newIcon_share[] = {
     {"M3,20 C3,13 7,9 13,9 L13,4 L22,12 L13,20 L13,15 C9,15 6,16 3,20 Z", 1.7f},
 };
@@ -95,6 +99,7 @@ inline const NewIconData newIcons[] = {
     {"clipboard", 24.f, newIcon_clipboard, 2},
     {"qr", 24.f, newIcon_qr, 2},
     {"share", 24.f, newIcon_share, 1},
+    {"pin", 24.f, newIcon_pin, 1},
     {"delete", 24.f, newIcon_delete, 1},
     {"edit", 24.f, newIcon_edit, 1},
     {"copy_outline", 24.f, newIcon_copyoutline, 1},
