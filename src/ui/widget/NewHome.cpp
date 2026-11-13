@@ -1837,7 +1837,13 @@ void NewHome::updateNotice() {
 QString NewHome::routeText(const std::shared_ptr<Configs::Group> &group, bool *fromProvider) {
     const auto &options = group->sub_options;
     *fromProvider = options.provider_routing_enabled && !options.routing_provider.isEmpty() && !options.provider_routing.isEmpty();
+    // A full Xray config keeps its own routing: the provider's lists are not applied, and with the client's
+    // routing only its rules go first, the rest follows the config.
+    const auto ids = group->Profiles();
+    const auto first = ids.isEmpty() ? nullptr : Configs::dataManager->profilesRepo->GetProfile(ids.first());
+    const bool xrayFull = first && first->outbound && first->outbound->IsXrayFullConfig();
     if (*fromProvider) {
+        if (xrayFull) return T("Routing of the provider's Xray config");
         if (options.provider_routing == "off") return T("Provider turned routing off: all through the server");
         const auto name = QString2QJsonObject(options.provider_routing).value("Name").toString();
         return T("Provider routing: %1").arg(name.isEmpty() ? options.routing_provider : name);
@@ -1845,8 +1851,9 @@ QString NewHome::routeText(const std::shared_ptr<Configs::Group> &group, bool *f
     const int routeId = Configs::RouteIdFor(group->id);
     const auto route = Configs::dataManager->routesRepo->GetRouteProfile(routeId);
     const QString name = route ? route->name : QString();
-    if (routeId == group->route_id && routeId != Configs::dataManager->settingsRepo->current_route_id) return T("Own routing: %1").arg(name);
-    return group->url.isEmpty() ? QString() : T("Routing: %1").arg(name);
+    const QString rest = xrayFull ? T(", the rest by the Xray config") : QString();
+    if (routeId == group->route_id && routeId != Configs::dataManager->settingsRepo->current_route_id) return T("Own routing: %1").arg(name) + rest;
+    return group->url.isEmpty() ? QString() : T("Routing: %1").arg(name) + rest;
 }
 
 void NewHome::openRouting() {
