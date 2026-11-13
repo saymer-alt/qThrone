@@ -1037,15 +1037,17 @@ void NewOrb::paintEvent(QPaintEvent *) {
     p.drawArc(QRectF(cx - glyph, cy - glyph, glyph * 2, glyph * 2), 55 * 16, -290 * 16);
     p.drawLine(QPointF(cx, cy - glyph * 1.3), QPointF(cx, cy - glyph * .15));
     // Caption under the waves.
-    const qreal top = cy + rest + 22;
-    p.setFont(NewStyle::font(13));
+    // The compact button keeps the caption and the time inside it, at the same proportions: the two lines take 51 px.
+    const qreal fit = std::clamp((height() - cy - rest) / 51.0, .6, 1.0);
+    const qreal top = cy + rest + 22 * fit;
+    p.setFont(NewStyle::font(qRound(13 * fit)));
     p.setPen(dim);
-    const QString caption = m_status.isEmpty() ? T("Click to connect") : m_status;
+    const QString caption = p.fontMetrics().elidedText(m_status.isEmpty() ? T("Click to connect") : m_status, Qt::ElideRight, width() - 8);
     p.drawText(QPointF(cx - p.fontMetrics().horizontalAdvance(caption) / 2.0, top), caption);
     if (m_connected) {
-        p.setFont(NewStyle::font(16, QFont::Bold));
+        p.setFont(NewStyle::font(qRound(16 * fit), QFont::Bold));
         p.setPen(ink);
-        p.drawText(QPointF(cx - p.fontMetrics().horizontalAdvance(m_elapsed) / 2.0, top + 25), m_elapsed);
+        p.drawText(QPointF(cx - p.fontMetrics().horizontalAdvance(m_elapsed) / 2.0, top + 25 * fit), m_elapsed);
     }
 }
 
