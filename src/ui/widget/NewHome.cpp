@@ -44,6 +44,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
+#include <QKeyEvent>
 #include <QProxyStyle>
 #include <QStyleFactory>
 #include <QStyleOption>
@@ -2059,34 +2060,44 @@ void NewHome::showGroupMenu() {
 }
 
 namespace {
-    // The arranging mode over the window: each movable block in a blinking dashed frame, arrows that send it to a
-    // place, and Done. The rest of the window does not take clicks meanwhile.
+    // The arranging mode over the window: each movable block in a breathing dashed frame that the mouse drags to
+    // its place, small buttons on the parts that change, the tutorial link and Done. The window takes no other clicks.
     class ArrangeOverlay : public QWidget {
     public:
-        struct Block { QPointer<QWidget> widget; QList<NewTile *> arrows; };
-        ArrangeOverlay(QWidget *parent, std::function<void()> done) : QWidget(parent) {
+        struct Block { QPointer<QWidget> widget; std::function<void(QPoint)> drop; };
+        struct Button { NewTile *tile; QPointer<QWidget> anchor; };
+        ArrangeOverlay(QWidget *parent, std::function<void()> done, std::function<void()> tutorial) : QWidget(parent) {
             m_done = new NewTile(NewTile::Chip, this);
             m_done->setText(QCoreApplication::translate("NewHome", "Done"));
             m_done->setFixedSize(120, 40);
             connect(m_done, &QAbstractButton::clicked, this, std::move(done));
+            m_tutorial = new NewTile(NewTile::Chip, this);
+            m_tutorial->setText(QCoreApplication::translate("NewHome", "Tutorial"));
+            m_tutorial->setFixedSize(120, 40);
+            connect(m_tutorial, &QAbstractButton::clicked, this, std::move(tutorial));
             auto *timer = new QTimer(this);
             connect(timer, &QTimer::timeout, this, [this] { m_phase = (m_phase + 1) % 32; place(); update(); });
             timer->start(60);
+            setMouseTracking(true);
             parent->installEventFilter(this);
         }
-        void addBlock(QWidget *widget, const QList<std::pair<QString, std::function<void()>>> &moves) {
-            Block block{widget, {}};
-            for (const auto &[text, move] : moves) {
-                auto *arrow = new NewTile(NewTile::Chip, this);
-                arrow->setText(text);
-                arrow->setFixedSize(40, 36);
-                connect(arrow, &QAbstractButton::clicked, this, move);
-                arrow->show();
-                block.arrows << arrow;
-            }
-            m_blocks << block;
+        void addBlock(QWidget *widget, std::function<void(QPoint)> drop) { m_blocks << Block{widget, std::move(drop)}; }
+        // A round button in [anchor]'s top right corner.
+        void addButton(QWidget *anchor, const QString &glyph, const QString &tip, std::function<void()> action) {
+            auto *tile = new NewTile(NewTile::Chip, this);
+            tile->setText(glyph);
+            tile->setToolTip(tip);
+            tile->setFixedSize(30, 30);
+            connect(tile, &QAbstractButton::clicked, this, [this, action = std::move(action)] { action(); rebuild(); });
+            tile->show();
+            m_buttons << Button{tile, anchor};
             place();
         }
+        void clearButtons() {
+            for (auto &button : m_buttons) button.tile->deleteLater();
+            m_buttons.clear();
+        }
+        std::function<void()> rebuild = [] {};
     protected:
         void paintEvent(QPaintEvent *) override {
             QPainter p(this);
@@ -2099,29 +2110,217 @@ namespace {
             p.setPen(pen);
             p.setBrush(Qt::NoBrush);
             for (const auto &block : m_blocks) if (block.widget && block.widget->isVisible()) p.drawRoundedRect(QRectF(frameOf(block)).adjusted(-4, -4, 4, 4), 16, 16);
+            if (m_dragged >= 0 && !m_ghost.isNull()) {
+                // The block follows the mouse, lifted and see-through, until it is dropped.
+                p.setOpacity(.82);
+                const QRect at(m_mouse - m_grab, m_ghost.size() / m_ghost.devicePixelRatio());
+                p.fillRect(at.translated(0, 6), withAlpha(Qt::black, 40));
+                p.drawPixmap(at, m_ghost);
+                p.setOpacity(1);
+                p.setPen(QPen(NewStyle::text(), 2, Qt::DashLine));
+                p.drawRoundedRect(QRectF(at).adjusted(-4, -4, 4, 4), 16, 16);
+            }
         }
         void resizeEvent(QResizeEvent *) override { place(); }
         bool eventFilter(QObject *watched, QEvent *event) override {
             if (watched == parentWidget() && event->type() == QEvent::Resize) setGeometry(parentWidget()->rect());
             return false;
         }
-        void mousePressEvent(QMouseEvent *event) override { event->accept(); }
+        void mousePressEvent(QMouseEvent *event) override {
+            event->accept();
+            // The innermost block under the mouse: the panel holds the others.
+            int best = -1;
+            for (int i = 0; i < m_blocks.size(); ++i) {
+                const auto &block = m_blocks[i];
+                if (!block.widget || !block.widget->isVisible() || !frameOf(block).contains(event->pos())) continue;
+                if (best < 0 || frameOf(block).width() * frameOf(block).height() < frameOf(m_blocks[best]).width() * frameOf(m_blocks[best]).height()) best = i;
+            }
+            if (best < 0) return;
+            m_dragged = best;
+            m_ghost = m_blocks[best].widget->grab();
+            m_grab = event->pos() - frameOf(m_blocks[best]).topLeft();
+            m_mouse = event->pos();
+            setCursor(Qt::ClosedHandCursor);
+            update();
+        }
+        void mouseMoveEvent(QMouseEvent *event) override {
+            if (m_dragged < 0) {
+                bool over = false;
+                for (const auto &block : m_blocks) over |= block.widget && block.widget->isVisible() && frameOf(block).contains(event->pos());
+                setCursor(over ? Qt::OpenHandCursor : Qt::ArrowCursor);
+                return;
+            }
+            m_mouse = event->pos();
+            update();
+        }
+        void mouseReleaseEvent(QMouseEvent *event) override {
+            if (m_dragged < 0) return;
+            const auto drop = m_blocks[m_dragged].drop;
+            m_dragged = -1;
+            m_ghost = {};
+            setCursor(Qt::OpenHandCursor);
+            if (drop) drop(event->pos());
+            rebuild();
+            update();
+        }
     private:
         QRect frameOf(const Block &block) const { return QRect(mapFromGlobal(block.widget->mapToGlobal(QPoint())), block.widget->size()); }
         void place() {
-            for (const auto &block : m_blocks) {
-                if (!block.widget) continue;
-                const QRect frame = frameOf(block);
-                const int width = int(block.arrows.size()) * 46 - 6;
-                int x = frame.center().x() - width / 2;
-                for (auto *arrow : block.arrows) { arrow->move(x, frame.center().y() - 18); arrow->raise(); x += 46; }
+            for (const auto &button : m_buttons) {
+                if (!button.anchor) { button.tile->hide(); continue; }
+                const QRect frame(mapFromGlobal(button.anchor->mapToGlobal(QPoint())), button.anchor->size());
+                button.tile->move(frame.right() - button.tile->width() + 8, frame.top() - 10);
+                button.tile->setVisible(true);
+                button.tile->raise();
             }
             m_done->move(width() - m_done->width() - 24, height() - m_done->height() - 24);
+            m_tutorial->move(24, height() - m_tutorial->height() - 24);
             m_done->raise();
+            m_tutorial->raise();
         }
         QList<Block> m_blocks;
+        QList<Button> m_buttons;
         NewTile *m_done;
+        NewTile *m_tutorial;
         int m_phase = 0;
+        int m_dragged = -1;
+        QPixmap m_ghost;
+        QPoint m_grab, m_mouse;
+    };
+
+    // The arranging tutorial: a small window played by a cursor, one line under it; skipped, finished or closed.
+    class ArrangeTutorial : public QWidget {
+    public:
+        ArrangeTutorial(QWidget *parent, std::function<void()> closed) : QWidget(parent), m_closed(std::move(closed)) {
+            setAttribute(Qt::WA_DeleteOnClose);
+            m_skip = new NewTile(NewTile::Chip, this);
+            m_skip->setText(QCoreApplication::translate("NewHome", "Skip"));
+            m_skip->setFixedSize(120, 38);
+            connect(m_skip, &QAbstractButton::clicked, this, [this] { finish(); });
+            m_next = new NewTile(NewTile::Chip, this);
+            m_next->setFixedSize(120, 38);
+            connect(m_next, &QAbstractButton::clicked, this, [this] { if (m_step == 2) finish(); else { m_step++; m_clock.restart(); updateText(); } });
+            auto *timer = new QTimer(this);
+            connect(timer, &QTimer::timeout, this, [this] { update(); });
+            timer->start(16);
+            m_clock.start();
+            parent->installEventFilter(this);
+            setGeometry(parent->rect());
+            setFocusPolicy(Qt::StrongFocus);
+            updateText();
+            show();
+            raise();
+            setFocus();
+        }
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override {
+            if (watched == parentWidget() && event->type() == QEvent::Resize) setGeometry(parentWidget()->rect());
+            return false;
+        }
+        void keyPressEvent(QKeyEvent *event) override { if (event->key() == Qt::Key_Escape) finish(); }
+        void mousePressEvent(QMouseEvent *event) override { event->accept(); }
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.fillRect(rect(), QColor(0, 0, 0, 175));
+            const qreal t = std::fmod(m_clock.elapsed() / 2800.0, 1.0);
+            const auto span = [t](qreal a, qreal b) { return std::clamp((t - a) / (b - a), 0.0, 1.0); };
+            const auto ease = [](qreal x) { return x * x * (3 - 2 * x); };
+            const QRectF demo(width() / 2.0 - 220, height() / 2.0 - 190, 440, 280);
+            p.setPen(Qt::NoPen);
+            p.setBrush(NewStyle::light() ? QColor(250, 250, 252) : QColor(28, 28, 32));
+            p.drawRoundedRect(demo, 18, 18);
+            const QColor surface = NewStyle::light() ? QColor(0, 0, 0, 18) : QColor(255, 255, 255, 22);
+            const QColor accent(80, 140, 255);
+            QRectF panel(demo.left() + 16, demo.top() + 16, 150, demo.height() - 32);
+            const QRectF list(demo.left() + 182, demo.top() + 16, demo.width() - 198, demo.height() - 32);
+            for (int i = 0; i < 6; ++i) { p.setBrush(surface); p.drawRoundedRect(QRectF(list.left(), list.top() + i * 42, list.width(), 34), 9, 9); }
+            QPointF cursor;
+            qreal press = 0;
+            if (m_step == 0) {
+                // The panel taken to the other side.
+                const qreal move = ease(span(.25, .7));
+                panel.moveLeft(panel.left() + (list.right() - 150 - (demo.left() + 16)) * move);
+                cursor = panel.center() + QPointF(0, -40);
+                press = span(.15, .25) * (1 - span(.75, .85));
+            } else if (m_step == 1) {
+                cursor = QPointF(panel.right() - 4, panel.top() + 6);
+            }
+            p.setBrush(surface);
+            p.drawRoundedRect(panel, 14, 14);
+            QPen dash(withAlpha(accent, 200), 1.6, Qt::DashLine);
+            p.setPen(dash); p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(panel.adjusted(-4, -4, 4, 4), 16, 16);
+            p.setPen(Qt::NoPen);
+            // The connect button, smaller after its size button.
+            const qreal small = m_step == 1 ? ease(span(.45, .6)) : 0;
+            const qreal r = 44 - 12 * small;
+            p.setBrush(accent);
+            p.drawEllipse(QPointF(panel.center().x(), panel.top() + 70), r, r);
+            // The two switches, always there.
+            p.setBrush(surface);
+            p.drawRoundedRect(QRectF(panel.left() + 10, panel.top() + 130, panel.width() - 20, 28), 8, 8);
+            p.drawRoundedRect(QRectF(panel.left() + 10, panel.top() + 164, panel.width() - 20, 28), 8, 8);
+            if (m_step == 1) {
+                p.setBrush(accent);
+                p.drawEllipse(QPointF(panel.right() - 4, panel.top() + 6), 11, 11);
+                press = span(.38, .45) * (1 - span(.45, .52));
+            }
+            if (m_step == 2) {
+                // The subscription card carried from the panel's bottom over the server list.
+                const qreal move = ease(span(.25, .7));
+                const QRectF from(panel.left() + 10, panel.bottom() - 40, panel.width() - 20, 30), to(list.left(), list.top() - 4, list.width(), 30);
+                const QRectF card(from.left() + (to.left() - from.left()) * move, from.top() + (to.top() - from.top()) * move,
+                                  from.width() + (to.width() - from.width()) * move, 30);
+                p.setBrush(accent);
+                p.drawRoundedRect(card, 9, 9);
+                cursor = card.center();
+                press = span(.15, .25) * (1 - span(.75, .85));
+            }
+            // The cursor: a filled arrow with a ring while it presses.
+            p.setBrush(QColor(255, 255, 255, int(90 * press)));
+            p.drawEllipse(cursor, 18, 18);
+            QPainterPath arrow;
+            arrow.moveTo(cursor);
+            arrow.lineTo(cursor + QPointF(0, 20));
+            arrow.lineTo(cursor + QPointF(5, 15));
+            arrow.lineTo(cursor + QPointF(9, 23));
+            arrow.lineTo(cursor + QPointF(12, 21));
+            arrow.lineTo(cursor + QPointF(8, 14));
+            arrow.lineTo(cursor + QPointF(14, 14));
+            arrow.closeSubpath();
+            p.setPen(QPen(Qt::black, 1.2));
+            p.setBrush(Qt::white);
+            p.drawPath(arrow);
+            // The step's line and its place among the three.
+            QFont font = p.font();
+            font.setPixelSize(18);
+            font.setBold(true);
+            p.setFont(font);
+            p.setPen(Qt::white);
+            p.drawText(QRectF(0, demo.bottom() + 18, width(), 30), Qt::AlignCenter, m_text);
+            p.setPen(Qt::NoPen);
+            for (int i = 0; i < 3; ++i) {
+                p.setBrush(i == m_step ? QColor(255, 255, 255) : QColor(255, 255, 255, 90));
+                p.drawEllipse(QPointF(width() / 2.0 + (i - 1) * 16, demo.bottom() + 62), 3.5, 3.5);
+            }
+            m_skip->move(int(demo.left()), int(demo.bottom() + 82));
+            m_next->move(int(demo.right()) - m_next->width(), int(demo.bottom() + 82));
+        }
+    private:
+        void updateText() {
+            static const char *lines[] = {QT_TRANSLATE_NOOP("NewHome", "Drag a block to move it"),
+                                          QT_TRANSLATE_NOOP("NewHome", "Buttons on a block change its size"),
+                                          QT_TRANSLATE_NOOP("NewHome", "The subscription card goes up, down or over the list")};
+            m_text = QCoreApplication::translate("NewHome", lines[m_step]);
+            m_next->setText(QCoreApplication::translate("NewHome", m_step == 2 ? "Done" : "Next"));
+        }
+        void finish() { if (m_closed) m_closed(); m_closed = nullptr; close(); }
+        std::function<void()> m_closed;
+        NewTile *m_skip, *m_next;
+        QElapsedTimer m_clock;
+        QString m_text;
+        int m_step = 0;
     };
 }
 
@@ -2148,29 +2347,46 @@ void NewHome::applyArrangement() {
     if (chip == QLatin1String("list")) m_bodyLayout->insertWidget(0, m_chipBox);
     m_chipBox->layout()->setContentsMargins(0, chip == QLatin1String("list") ? 0 : 14, 0, chip == QLatin1String("list") ? 10 : 0);
     m_chipBox->show();
+    m_orb->setFixedHeight(settings.new_layout_size == QLatin1String("compact") ? 148 : 190);
 }
 
 void NewHome::setArranging(bool on) {
     if (!on) { delete m_arrange; m_arrange = nullptr; return; }
     if (m_arrange) return;
     auto &settings = *Configs::dataManager->settingsRepo;
-    const auto set = [this](QString &field, const char *value) {
-        field = QLatin1String(value);
+    const auto set = [this](QString &field, const QString &value) {
+        field = value;
         Configs::dataManager->settingsRepo->Save();
         applyArrangement();
     };
-    auto *overlay = new ArrangeOverlay(this, [this] { setArranging(false); });
-    overlay->addBlock(m_side, {{QStringLiteral("←"), [=, &settings] { set(settings.new_layout_panel, "left"); }},
-                               {QStringLiteral("→"), [=, &settings] { set(settings.new_layout_panel, "right"); }}});
-    overlay->addBlock(m_chipBox, {{QStringLiteral("↑"), [=, &settings] { set(settings.new_layout_chip, "top"); }},
-                                  {QStringLiteral("↓"), [=, &settings] { set(settings.new_layout_chip, "bottom"); }},
-                                  {QStringLiteral("⇥"), [=, &settings] { set(settings.new_layout_chip, "list"); }}});
-    overlay->addBlock(m_controls, {{QStringLiteral("↑"), [=, &settings] { set(settings.new_layout_controls, "top"); }},
-                                   {QStringLiteral("↓"), [=, &settings] { set(settings.new_layout_controls, "bottom"); }}});
+    auto *overlay = new ArrangeOverlay(this, [this] { setArranging(false); }, [this] { new ArrangeTutorial(this, {}); });
+    // Where a block is dropped decides its place.
+    overlay->addBlock(m_side, [=, &settings](QPoint at) { set(settings.new_layout_panel, at.x() < width() / 2 ? QStringLiteral("left") : QStringLiteral("right")); });
+    overlay->addBlock(m_chipBox, [=, &settings](QPoint at) {
+        const QRect panel(mapFromGlobal(m_side->mapToGlobal(QPoint())), m_side->size());
+        if (!panel.contains(at)) { set(settings.new_layout_chip, QStringLiteral("list")); return; }
+        const QRect controls(mapFromGlobal(m_controls->mapToGlobal(QPoint())), m_controls->size());
+        set(settings.new_layout_chip, at.y() < controls.center().y() ? QStringLiteral("top") : QStringLiteral("bottom"));
+    });
+    overlay->addBlock(m_controls, [=, &settings](QPoint at) {
+        const QRect panel(mapFromGlobal(m_side->mapToGlobal(QPoint())), m_side->size());
+        set(settings.new_layout_controls, at.y() < panel.center().y() ? QStringLiteral("top") : QStringLiteral("bottom"));
+    });
+    overlay->rebuild = [=, &settings] {
+        overlay->clearButtons();
+        const bool compact = settings.new_layout_size == QLatin1String("compact");
+        overlay->addButton(m_orb, compact ? QStringLiteral("⤢") : QStringLiteral("⤡"), T("Change size"),
+                           [=, &settings] { set(settings.new_layout_size, compact ? QStringLiteral("normal") : QStringLiteral("compact")); });
+    };
+    overlay->rebuild();
     overlay->setGeometry(rect());
     overlay->show();
     overlay->raise();
     m_arrange = overlay;
+    if (settings.new_layout_tutorial != QLatin1String("seen")) new ArrangeTutorial(this, [] {
+        Configs::dataManager->settingsRepo->new_layout_tutorial = QStringLiteral("seen");
+        Configs::dataManager->settingsRepo->Save();
+    });
 }
 
 void NewHome::paintEvent(QPaintEvent *) {

@@ -16970,6 +16970,34 @@ connection</source>
         <source>Stop sorting</source>
         <translation>Не сортировать</translation>
     </message>
+    <message>
+        <source>Tutorial</source>
+        <translation>Обучение</translation>
+    </message>
+    <message>
+        <source>Skip</source>
+        <translation>Пропустить</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>Далее</translation>
+    </message>
+    <message>
+        <source>Change size</source>
+        <translation>Сменить размер</translation>
+    </message>
+    <message>
+        <source>Drag a block to move it</source>
+        <translation>Перетащите блок, чтобы переместить</translation>
+    </message>
+    <message>
+        <source>Buttons on a block change its size</source>
+        <translation>Кнопки на блоке меняют его размер</translation>
+    </message>
+    <message>
+        <source>The subscription card goes up, down or over the list</source>
+        <translation>Карточку подписки можно поставить сверху, снизу или над списком</translation>
+    </message>
 </context>
 <context>
     <name>DialogAbout</name>

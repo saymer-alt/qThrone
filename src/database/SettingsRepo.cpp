@@ -200,6 +200,8 @@ namespace Configs {
             {"new_layout_panel", &new_layout_panel},
             {"new_layout_chip", &new_layout_chip},
             {"new_layout_controls", &new_layout_controls},
+            {"new_layout_size", &new_layout_size},
+            {"new_layout_tutorial", &new_layout_tutorial},
             {"relay_default_qwdtt_mode", &relay_default_qwdtt_mode},
             {"relay_default_wdttplus_mode", &relay_default_wdttplus_mode},
             {"relay_default_csqtt_transport", &relay_default_csqtt_transport},
