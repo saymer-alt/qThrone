@@ -49,6 +49,7 @@ DialogVPNSettings::DialogVPNSettings(QWidget *parent) : QDialog(parent), ui(new 
     ui->auto_redirect->setChecked(Configs::dataManager->settingsRepo->vpn_auto_redirect);
     ui->l3_bridge->setChecked(Configs::dataManager->settingsRepo->vpn_l3_bridge);
     ui->block_quic->setChecked(Configs::dataManager->settingsRepo->block_quic);
+    ui->sniff_route_only->setChecked(Configs::dataManager->settingsRepo->sniff_route_only);
     for (auto *widget : UnavailableWidgets(ui)) widget->hide();
     UiMode::Apply(this);
 
@@ -109,6 +110,7 @@ void DialogVPNSettings::accept() {
     Configs::dataManager->settingsRepo->vpn_auto_redirect = ui->auto_redirect->isChecked();
     Configs::dataManager->settingsRepo->vpn_l3_bridge = ui->l3_bridge->isChecked();
     Configs::dataManager->settingsRepo->block_quic = ui->block_quic->isChecked();
+    Configs::dataManager->settingsRepo->sniff_route_only = ui->sniff_route_only->isChecked();
     MW_dialog_message(MwMessage::UpdateSettings, {MwArg::Vpn});
     QDialog::accept();
 }

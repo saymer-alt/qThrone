@@ -2909,6 +2909,8 @@ namespace Configs {
 
             if (!routeChain->isRaw) {
                 injected.sniff = QJsonObject{{"action", "sniff"}};
+                // Off, the server gets the sniffed domain instead of the IP, as an Xray client without routeOnly sends it.
+                if (!settings.sniff_route_only) injected.sniff["override_destination"] = true;
                 if (!resolveStrategy.isEmpty()) {
                     injected.resolve = QJsonObject{
                         {"inbound", QJsonArray{tags::mixedIn, tags::tunIn}},

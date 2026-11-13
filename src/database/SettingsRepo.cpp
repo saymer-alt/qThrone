@@ -139,6 +139,7 @@ namespace Configs {
             {"disable_private_range_bypass", &disable_private_range_bypass},
             {"dns_optimistic", &dns_optimistic},
             {"block_quic", &block_quic},
+            {"sniff_route_only", &sniff_route_only},
             {"dns_use_hosts", &dns_use_hosts},
             {"dns_predefined_enable", &dns_predefined_enable},
             {"connection_sort_asc", &connection_sort_asc},

@@ -248,6 +248,8 @@ namespace Configs {
         QString dns_final_out = "remote";
         bool dns_optimistic = true;
         bool block_quic = true;
+        // The sniffed domain only picks the route (on), or also replaces the destination the server gets (off), as Xray's routeOnly.
+        bool sniff_route_only = true;
         QString dns_optimistic_timeout = "";
         QString dns_query_timeout = "";
         bool dns_use_hosts = false;

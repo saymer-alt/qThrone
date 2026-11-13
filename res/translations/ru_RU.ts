@@ -5807,6 +5807,14 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>IPv6 CIDR</source>
         <translation>IPv6 CIDR</translation>
     </message>
+    <message>
+        <source>Route by domain (routeOnly)</source>
+        <translation>Маршрутизация по домену (routeOnly)</translation>
+    </message>
+    <message>
+        <source>Use the SNI or host found by sniffing only to choose the route, without replacing the connection address: the server gets the IP. Turn it off when the server has to route by domain, for example in a cascade; then the server gets the domain.</source>
+        <translation>Использовать SNI или host из сниффинга только для выбора маршрута, не подменяя адрес соединения: сервер получает IP. Выключите, если серверу нужно маршрутизировать по доменам, например в каскаде, тогда сервер получит домен.</translation>
+    </message>
 </context>
 <context>
     <name>DialogVpnAuth</name>

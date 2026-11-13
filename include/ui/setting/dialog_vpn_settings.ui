@@ -142,6 +142,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="sniff_route_only">
+          <property name="toolTip">
+           <string>Use the SNI or host found by sniffing only to choose the route, without replacing the connection address: the server gets the IP. Turn it off when the server has to route by domain, for example in a cascade; then the server gets the domain.</string>
+          </property>
+          <property name="text">
+           <string>Route by domain (routeOnly)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <spacer name="checksRow2Spacer">
           <property name="orientation">
            <enum>Qt::Orientation::Horizontal</enum>
@@ -291,6 +301,7 @@
   <tabstop>tun_ipv6_cidr</tabstop>
   <tabstop>restore_default_addresses</tabstop>
   <tabstop>strict_route</tabstop>
+  <tabstop>sniff_route_only</tabstop>
   <tabstop>restart_core</tabstop>
  </tabstops>
  <resources/>
