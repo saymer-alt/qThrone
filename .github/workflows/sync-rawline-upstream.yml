@@ -1,0 +1,69 @@
+name: Sync Rawline upstream (manual only)
+
+# No push, PR or schedule triggers: no automatic builds and no GitHub Actions
+# consumption unless the owner explicitly dispatches this workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rawline-upstream-dev-sync
+  cancel-in-progress: false
+
+jobs:
+  fast-forward:
+    # Only the protected fork default branch can dispatch a sync.
+    if: github.repository == 'saymer-alt/qThrone' && github.ref == 'refs/heads/qthrone'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Fast-forward only upstream/rawline-dev from ttrroyy/Rawline dev
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORK_REPO: ${{ github.repository }}
+          UPSTREAM_REPO: ttrroyy/Rawline
+          UPSTREAM_BRANCH: dev
+          TRACKING_BRANCH: upstream/rawline-dev
+        run: |
+          set -euo pipefail
+
+          source_sha="$(gh api "repos/$UPSTREAM_REPO/branches/$UPSTREAM_BRANCH" --jq '.commit.sha')"
+          target_sha="$(gh api "repos/$FORK_REPO/branches/$TRACKING_BRANCH" --jq '.commit.sha')"
+
+          [[ "$source_sha" =~ ^[a-f0-9]{40}$ && "$target_sha" =~ ^[a-f0-9]{40}$ ]] || {
+            echo "::error::Invalid branch SHA returned by GitHub API"
+            exit 1
+          }
+
+          echo "Upstream $UPSTREAM_REPO:$UPSTREAM_BRANCH: $source_sha"
+          echo "Tracking $FORK_REPO:$TRACKING_BRANCH: $target_sha"
+
+          if [[ "$source_sha" == "$target_sha" ]]; then
+            echo "Already current; nothing to update."
+            exit 0
+          fi
+
+          # Never overwrite local commits or upstream history rewrites.
+          status="$(gh api "repos/$UPSTREAM_REPO/compare/$target_sha...$source_sha" --jq '.status')"
+          if [[ "$status" != "ahead" ]]; then
+            echo "::error::Non-fast-forward update rejected (compare status: $status). Inspect history manually."
+            exit 1
+          fi
+
+          # GitHub itself enforces fast-forward (force=false).
+          gh api --method PATCH "repos/$FORK_REPO/git/refs/heads/$TRACKING_BRANCH" \
+            -f sha="$source_sha" -F force=false >/dev/null
+
+          updated_sha="$(gh api "repos/$FORK_REPO/branches/$TRACKING_BRANCH" --jq '.commit.sha')"
+          if [[ "$updated_sha" != "$source_sha" ]]; then
+            echo "::error::Tracking branch did not land on the expected upstream SHA."
+            exit 1
+          fi
+
+          echo "Updated $TRACKING_BRANCH to $updated_sha"
+          echo "Protected qthrone, fork dev and experimental/keenetic-arm64 were not changed."
