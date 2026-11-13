@@ -71,6 +71,19 @@ def main():
     if 'common.' not in text:
         text = text.replace('\t"github.com/sagernet/sing/common"\n', '')
     client.write_text(text, encoding='utf-8', newline='\n')
+    # A WireGuard endpoint behind a detour (a chain hop, WARP over a proxy) does not use the default network: rebinding
+    # it there dropped the flow to the next hop, and the tunnel stalled until the 15 s handshake retry.
+    endpoint = copy / 'protocol/wireguard/endpoint.go'
+    text = endpoint.read_text(encoding='utf-8')
+    for old, new in [
+        ('\tonDemand       bool\n', '\tonDemand       bool\n\tdetoured       bool\n'),
+        ('\t\tonDemand:       options.OnDemand,\n', '\t\tonDemand:       options.OnDemand,\n\t\tdetoured:       options.Detour != "",\n'),
+        ('func (w *Endpoint) InterfaceUpdated(ctx context.Context) {\n\tif !w.started.Load() {',
+         'func (w *Endpoint) InterfaceUpdated(ctx context.Context) {\n\tif !w.started.Load() || w.detoured {'),
+    ]:
+        assert text.count(old) == 1, 'sing-box WireGuard endpoint changed; review script/reality_overlay.py'
+        text = text.replace(old, new)
+    endpoint.write_text(text, encoding='utf-8', newline='\n')
     # gomobile builds outside the module and refuses -modfile: the Android build (a CI checkout) edits go.mod itself.
     if sys.argv[1:] == ['--in-place']:
         assert not legacy, 'the Android build needs Go 1.27'
