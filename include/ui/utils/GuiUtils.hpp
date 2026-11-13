@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <QTextDocument>
+#include <QWidget>
 
 #include "include/engine/services/ServiceTypes.h"
 
@@ -72,16 +74,9 @@ inline QString GroupDeleteRefusalText(const Engine::ServiceError &error) {
 
 #define C_EDIT_JSON_ALLOW_EMPTY(a, schemaRef)                                            auto editor = new JsonEdit::JsonEditorDialog(QString2QJsonObject(CACHE.a), this);     editor->SetValidator(JsonEdit::SingBoxValidator(schemaRef));                          auto result = editor->OpenEditor();                                                   CACHE.a = QJsonObject2QString(result, true);                                          if (result.isEmpty()) CACHE.a = "";                                                   editor->deleteLater();
 
-#define ADD_ASTERISK(parent)                                         \
-    for (auto label: parent->findChildren<QLabel *>()) {             \
-        auto text = label->text();                                   \
-        if (!label->toolTip().isEmpty() && !text.endsWith("*")) {    \
-            label->setText(text + "*");                              \
-        }                                                            \
-    }                                                                \
-    for (auto checkBox: parent->findChildren<QCheckBox *>()) {       \
-        auto text = checkBox->text();                                \
-        if (!checkBox->toolTip().isEmpty() && !text.endsWith("*")) { \
-            checkBox->setText(text + "*");                           \
-        }                                                            \
-    }
+// Plain text tooltips are not wrapped: a long one ran off the screen. As rich text Qt wraps it to a readable width.
+inline void WrapToolTip(QWidget *widget) {
+    const auto tip = widget->toolTip();
+    if (!tip.isEmpty() && !Qt::mightBeRichText(tip)) widget->setToolTip(QStringLiteral("<p>") + tip.toHtmlEscaped() + QStringLiteral("</p>"));
+}
+#define ADD_ASTERISK(parent)                                                                       for (auto label: parent->findChildren<QLabel *>()) {                                               if (!label->toolTip().isEmpty() && !label->text().endsWith("*")) label->setText(label->text() + "*");         WrapToolTip(label);                                                                        }                                                                                              for (auto checkBox: parent->findChildren<QCheckBox *>()) {                                         if (!checkBox->toolTip().isEmpty() && !checkBox->text().endsWith("*")) checkBox->setText(checkBox->text() + "*");         WrapToolTip(checkBox);                                                                     }

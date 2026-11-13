@@ -2253,8 +2253,8 @@ namespace {
             p.drawRoundedRect(panel.adjusted(-4, -4, 4, 4), 16, 16);
             p.setPen(Qt::NoPen);
             // The connect button, smaller after its size button.
-            const qreal small = m_step == 1 ? ease(span(.45, .6)) : 0;
-            const qreal r = 44 - 12 * small;
+            const qreal shrink = m_step == 1 ? ease(span(.45, .6)) : 0;
+            const qreal r = 44 - 12 * shrink;
             p.setBrush(accent);
             p.drawEllipse(QPointF(panel.center().x(), panel.top() + 70), r, r);
             // The two switches, always there.
