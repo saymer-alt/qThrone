@@ -155,6 +155,11 @@ func (events panelEvents) of(kind string) []Event {
 // runPanel runs one panel request the way the GUI does: the request line, then the answers to its questions.
 func runPanel(t *testing.T, action, id string, s map[string]string, answers ...string) (panelEvents, string, error) {
 	t.Helper()
+	return runPanelFor(t, action, id, s, 20*time.Second, answers...)
+}
+
+func runPanelFor(t *testing.T, action, id string, s map[string]string, timeout time.Duration, answers ...string) (panelEvents, string, error) {
+	t.Helper()
 	request, _ := json.Marshal(Request{Operation: "panel", Value: action, ID: id, Server: s})
 	input := string(request) + "\n"
 	for _, answer := range answers {
@@ -168,7 +173,7 @@ func runPanel(t *testing.T, action, id string, s map[string]string, answers ...s
 	var e error
 	select {
 	case e = <-done:
-	case <-time.After(20 * time.Second):
+	case <-time.After(timeout):
 		t.Fatal("panel request did not finish")
 	}
 	writer.Close()
@@ -278,7 +283,7 @@ func TestPanelCheckReportsInstallerVerdict(t *testing.T) {
 	}
 	commands, _ := f.seen()
 	commands[0] = plain(commands[0])
-	want :="env WDTT_PROTOCOLS='wdtt,dnstt' WDTT_FRONTEND=nginx WDTT_DOMAIN='panel.example.org' WDTT_CERT_EMAIL='' "
+	want := "env WDTT_PROTOCOLS='wdtt,dnstt' WDTT_FRONTEND=nginx WDTT_DOMAIN='panel.example.org' WDTT_CERT_EMAIL='' "
 	if !strings.Contains(commands[0], want) || !strings.Contains(commands[0], "WDTT_DNS_ZONE='t.example.org'") ||
 		!strings.Contains(commands[0], "WDTT_DNS_NS='ns.example.org'") || !strings.Contains(commands[0], "bash /root/wdtt-install.sh check combined'") {
 		t.Fatalf("check command %q", commands[0])
@@ -462,6 +467,25 @@ func TestPanelTunnelForwardsToPanelPort(t *testing.T) {
 	f := startFakeVPS(t, "ssh-secret", installerHandler(t))
 	s := panelServer(f)
 	s["panelPort"] = panelPort
+	withTunnel(t, s, func(port int) {
+		for i := 0; i < 3; i++ {
+			response, e := http.Get(fmt.Sprintf("http://127.0.0.1:%d/Abc/", port))
+			if e != nil {
+				t.Fatal(e)
+			}
+			body, _ := io.ReadAll(response.Body)
+			response.Body.Close()
+			if string(body) != "panel /Abc/" {
+				t.Fatalf("body %q", body)
+			}
+		}
+	})
+}
+
+// withTunnel opens the panel tunnel as the window does, runs [use] with its local port, then closes the window's
+// stdin and checks that the tunnel stops and frees the port.
+func withTunnel(t *testing.T, s map[string]string, use func(port int)) {
+	t.Helper()
 	request, _ := json.Marshal(Request{Operation: "panel", Value: "tunnel", Server: s})
 	reader, writer := io.Pipe()
 	output, events := io.Pipe()
@@ -481,18 +505,7 @@ func TestPanelTunnelForwardsToPanelPort(t *testing.T) {
 		}
 	}
 	go io.Copy(io.Discard, output)
-	for i := 0; i < 3; i++ {
-		response, e := http.Get(fmt.Sprintf("http://127.0.0.1:%d/Abc/", port))
-		if e != nil {
-			t.Fatal(e)
-		}
-		body, _ := io.ReadAll(response.Body)
-		response.Body.Close()
-		if string(body) != "panel /Abc/" {
-			t.Fatalf("body %q", body)
-		}
-	}
-	// A closed window closes stdin: the tunnel stops and frees its port.
+	use(port)
 	writer.Close()
 	select {
 	case e := <-done:
@@ -502,7 +515,8 @@ func TestPanelTunnelForwardsToPanelPort(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("tunnel kept running without its window")
 	}
-	if _, e := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second); e == nil {
+	if c, e := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second); e == nil {
+		c.Close()
 		t.Fatal("tunnel port still open")
 	}
 }
